@@ -9,4 +9,4 @@ Live site: https://ahore-mascon-cup.netlify.app (deploys automatically from this
 - `demo.json` — simulated tournament for the "Load demo" button in Setup
 
 Firestore rules deploy automatically from GitHub Actions when `firestore.rules` changes
-(secret `FIREBASE_SERVICE_ACCOUNT` holds the Firebase service-account JSON).
+(secret `KEY` holds the Firebase service-account JSON).

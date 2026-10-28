@@ -16,7 +16,7 @@ jobs:
       - name: Write service account
         run: echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.KEY }}
       - name: Deploy rules
         run: firebase deploy --only firestore:rules --project ahore-mascon-cup-2026 --non-interactive
         env:
