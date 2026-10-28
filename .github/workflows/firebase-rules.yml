@@ -14,10 +14,14 @@ jobs:
           node-version: 20
       - run: npm install -g firebase-tools
       - name: Write service account
-        run: echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          # tolerate a paste that lost the opening brace
+          case "$(head -c1 "$RUNNER_TEMP/sa.json")" in "{") ;; *) sed -i '1s/^/{/' "$RUNNER_TEMP/sa.json" ;; esac
+          node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log("service account OK:",j.client_email,"project:",j.project_id)' "$RUNNER_TEMP/sa.json" || { echo "::error::KEY secret is not valid service-account JSON. Re-paste the whole downloaded file."; exit 1; }
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.KEY }}
       - name: Deploy rules
-        run: firebase deploy --only firestore:rules --project ahore-mascon-cup-2026 --non-interactive
+        run: firebase deploy --only firestore:rules --project ahore-mascon-cup-2026 --non-interactive --debug 2>&1 | grep -viE "private_key|BEGIN|END PRIVATE" | tail -40; exit ${PIPESTATUS[0]}
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
