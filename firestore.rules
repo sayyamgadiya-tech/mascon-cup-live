@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Must match scorerEmail in config.js
+    function isScorer() {
+      return request.auth != null && request.auth.token.email == 'scorer@masconcup.app';
+    }
+    function matchData(mid) {
+      return get(/databases/$(database)/documents/matches/$(mid)).data;
+    }
+
+    // Teams, squads and settings: everyone reads, only the scorer writes
+    match /tournament/{docId} {
+      allow read: if true;
+      allow write: if isScorer();
+    }
+
+    // Matches with every ball: everyone reads, only the scorer writes
+    match /matches/{mid} {
+      allow read: if true;
+      allow write: if isScorer();
+    }
+
+    // Fan predictions: one field per fan (their anonymous id) on one document per match.
+    // A fan may set only their own pick, only for one of the two teams, only before the first ball.
+    match /polls/{mid} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly([request.auth.uid])
+        && matchData(mid).status in ['scheduled', 'setup']
+        && request.resource.data[request.auth.uid] in [matchData(mid).a, matchData(mid).b];
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid])
+        && matchData(mid).status in ['scheduled', 'setup']
+        && request.resource.data[request.auth.uid] in [matchData(mid).a, matchData(mid).b];
+      allow delete: if isScorer();
+    }
+
+    // Fantasy teams: one document per phone (anonymous uid). Name + exactly 13 player ids.
+    // Anyone can read (leaderboard). Create/update only by that same phone, only before the first ball.
+    function noBallBowled() {
+      return !exists(/databases/$(database)/documents/meta/lock);
+    }
+    match /fantasy/{fid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && fid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 30
+        && request.resource.data.p is list && request.resource.data.p.size() == 13
+        && noBallBowled();
+      allow delete: if isScorer();
+    }
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if isScorer();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
