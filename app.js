@@ -30,6 +30,15 @@ const last=a=>a[a.length-1];
 const teamOf=id=>(T?.teams||[]).find(t=>t.id===id);
 const tname=id=>teamOf(id)?.name||"TBD";
 function pname(id){if(!id)return"—";for(const t of T?.teams||[]){const p=t.players.find(p=>p.id===id);if(p)return p.name}return"Player"}
+const PALETTE=["#6B21A8","#B91C1C","#0F766E","#111827","#C2410C","#B45309","#1D4ED8","#15803D","#BE185D","#0369A1"];
+function tmeta(id){const t=teamOf(id);if(!t)return{name:"TBD",color:"#64748B",logo:"",short:"TBD",initials:"?"};
+  const pre=PRESET.find(p=>p.name===t.name.trim().toUpperCase());const idx=(T.teams.indexOf(t)+10)%10;
+  const words=t.name.trim().split(/\s+/);const initials=(words.length>1?words[0][0]+words[words.length-1][0]:t.name.slice(0,2)).toUpperCase();
+  return{name:t.name,color:pre?.color||PALETTE[idx],logo:pre?.logo?"logos/"+pre.logo:"",short:words[0].length>=5?words[0]:words.slice(0,2).join(" "),initials}}
+function badge(id,size){const m=tmeta(id);const sz=size||32;
+  return m.logo?`<img class="badge" src="${esc(m.logo)}" alt="" width="${sz}" height="${sz}" style="--sz:${sz}px" onerror="this.outerHTML='<span class=badge style=\'--sz:${sz}px;background:${m.color}\'>${esc(m.initials)}</span>'">`
+    :`<span class="badge" style="--sz:${sz}px;background:${m.color}">${esc(m.initials)}</span>`}
+const teamLine=(id,cls)=>`<span class="tl ${cls||""}">${badge(id,26)}<span class="tn">${esc(tname(id))}</span></span>`;
 function pteam(id){for(const t of T?.teams||[])if(t.players.some(p=>p.id===id))return t.id;return null}
 const isLegal=b=>b.t!=="wd"&&b.t!=="nb";
 const ovs=l=>Math.floor(l/6)+"."+(l%6);
@@ -198,7 +207,7 @@ function fantasyView(){
   const locked=fantasyLocked(),pts=fantasyPoints();
   const board=fantasyBoard();
   const rank=FT.mine?board.findIndex(t=>t.id===FT.mine.id)+1:0;
-  const nm=id=>{const p=allPlayers().find(p=>p.id===id);return p?`${esc(p.name)} <span class="muted small">${esc(p.team)}</span>`:"Player"};
+  const nm=id=>{const p=allPlayers().find(p=>p.id===id);return p?`<span class="tl">${badge(p.tid,22)}<span class="tn">${esc(p.name)} <span class="muted small">${esc(p.role)}</span></span></span>`:"Player"};
   let mine="";
   if(FT.draft&&!locked)mine=pickerHtml();
   else if(FT.mine){
@@ -208,7 +217,8 @@ function fantasyView(){
     ${locked?`<p class="kv">Teams are locked for the tournament.</p>`:`<div class="row-btns"><button class="btn" data-act="fEdit">Change my team</button><button class="btn warn" data-act="fForget">Not my team</button></div>`}</div>`;
   }else mine=locked?`<div class="panel"><h2>Entries closed</h2><p class="kv">Fantasy teams locked when the first ball was bowled.</p></div>`
     :`<div class="panel"><h2>Build your XIII</h2><p class="kv">Pick any 13 players from the 10 squads. One team per person; it locks at the first ball on 29 November.</p><button class="btn pri" data-act="fNew">Pick my 13</button></div>`;
-  const lb=board.length?`<h2>Leaderboard</h2><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr${t.id===FT.mine?.id?' class="q"':""}><td style="text-align:left">${i+1}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b></td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
+  const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1;
+  const lb=board.length?`<h2>Leaderboard</h2><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr${t.id===FT.mine?.id?' class="q"':""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
   const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12</div></details>`;
   return`<section>${mine}${lb}${scoring}</section>`;
 }
@@ -222,7 +232,7 @@ function pickerHtml(){
   <div class="field"><label class="label" for="f-name">Your name (shown on the leaderboard)</label><input id="f-name" value="${esc(d.name)}" maxlength="30" placeholder="e.g. Rahul D" data-fname="1"></div>
   ${sel.size?`<div class="chips">${d.p.map(id=>{const p=allPlayers().find(x=>x.id===id);return`<button class="chip" data-act="fTog" data-id="${id}">${esc(p?.name||"?")} ✕</button>`}).join("")}</div>`:""}
   <input id="f-q" placeholder="Search player or team" value="${esc(FT.q)}" data-fq="1">
-  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label">${esc(team)}</div><div class="xi">${ps.map(p=>`<label class="${sel.has(p.id)?"on":""}${full&&!sel.has(p.id)?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${sel.has(p.id)?" checked":""}${full&&!sel.has(p.id)?" disabled":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}</label>`).join("")}</div>`).join("")}
+  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label tl">${badge(ps[0].tid,20)}<span>${esc(team)}</span></div><div class="xi">${ps.map(p=>`<label class="${sel.has(p.id)?"on":""}${full&&!sel.has(p.id)?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${sel.has(p.id)?" checked":""}${full&&!sel.has(p.id)?" disabled":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}</label>`).join("")}</div>`).join("")}
   ${FT.err?`<div class="msg" style="color:var(--out)">${esc(FT.err)}</div>`:""}
   <div class="row-btns"><button class="btn pri" data-act="fSave"${sel.size===13?"":" disabled"}>Save my team</button><button class="btn" data-act="fCancel">Cancel</button></div></div>`;
 }
@@ -253,7 +263,7 @@ function pollHtml(m){
   const ca=p.c[m.a]||0,cb=p.c[m.b]||0,tot=ca+cb,pa=tot?Math.round(ca*100/tot):50;
   const open=m.status==="scheduled"||m.status==="setup";
   if(!open&&!tot)return"";
-  const side=(id,n,pc)=>`<button class="pick${p.mine===id?" mine":""}" data-act="vote" data-m="${m.id}" data-t="${id}"${open&&uid?"":" disabled"}><span>${esc(tname(id))}${p.mine===id?" · your pick":""}</span><b>${tot?pc+"%":"–"}</b></button>`;
+  const side=(id,n,pc)=>`<button class="pick${p.mine===id?" mine":""}" data-act="vote" data-m="${m.id}" data-t="${id}"${open&&uid?"":" disabled"}>${badge(id,22)}<span>${esc(tmeta(id).short)}${p.mine===id?" ✓":""}</span><b>${tot?pc+"%":"–"}</b></button>`;
   const head=open?(p.mine?"Your prediction is in. You can change it until the first ball.":"Who wins? Tap to predict."):`Fans' prediction · ${tot} vote${tot===1?"":"s"}`;
   return`<div class="poll"><div class="label">${head}</div><div class="bar"><span style="width:${pa}%"></span></div><div class="picks">${side(m.a,ca,pa)}${side(m.b,cb,100-pa)}</div>${open&&tot?`<div class="kv">${tot} vote${tot===1?"":"s"} so far</div>`:""}</div>`;
 }
@@ -307,7 +317,9 @@ addEventListener("offline",()=>canScore&&setSync("","Offline · saved on this ph
 function headerHtml(){
   const t=[["live","Live"],["matches","Matches"],["table","Table"],["stats","Stats"],["fantasy","Fantasy"]];
   if(canScore){t.push(["score","Score"]);t.push(["setup","Setup"])}
-  return`<div class="wrap"><div class="brand"><span class="mark" aria-hidden="true"></span><h1>${esc(T?.name||DEF.name)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
+  const nm=(T?.name||DEF.name).replace(/\s*\(DEMO\)\s*/i,"");const demo=/DEMO/i.test(T?.name||"");
+  const parts=nm.split(/\s+/);const eyebrow=parts.length>2?parts[0]:"";const main=parts.length>2?parts.slice(1).join(" "):nm;
+  return`<div class="wrap"><div class="brand"><span class="mark" aria-hidden="true"></span><h1>${eyebrow?`<small>${esc(eyebrow)}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?`<button class="btn sm ghost" data-act="tab" data-v="setup">Setup</button>`:`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
   <nav class="tabs" aria-label="Sections">${t.map(([k,l])=>`<button data-act="tab" data-v="${k}" aria-current="${ui.tab===k}">${l}</button>`).join("")}</nav></div>${sponsorHtml()}`;
 }
 function sponsorHtml(){
@@ -321,18 +333,22 @@ function statusPill(m){
 }
 function boardHtml(m){
   const meta=`<div class="meta">${statusPill(m)}<span>${esc(stageLabel(m))}</span><span>· ${mOvers(m)} overs</span></div>`;
-  if(m.status==="scheduled")return`<div class="board">${meta}<div class="vs">${esc(tname(m.a))} <span>vs</span> ${esc(tname(m.b))}</div><div class="small" style="color:var(--board-muted)">Toss not done yet.</div></div>`;
+  const vs=`<div class="vsrow"><div class="vst">${badge(m.a,56)}<b>${esc(tname(m.a))}</b></div><span class="vsx">vs</span><div class="vst">${badge(m.b,56)}<b>${esc(tname(m.b))}</b></div></div>`;
+  if(m.status==="scheduled")return`<div class="board">${meta}${vs}<div class="small" style="color:var(--board-muted);text-align:center">Toss not done yet.</div></div>`;
   if(!m.inn.length){
     const done=m.status==="done";
-    return`<div class="board">${meta}<div class="vs">${esc(tname(m.a))} <span>vs</span> ${esc(tname(m.b))}</div>${done?`<div class="result">${esc(m.result)}</div>`:`<div class="small" style="color:var(--board-muted)">${esc(tname(m.toss))} won the toss and chose to ${m.chose==="bat"?"bat":"bowl"}. Openers coming out.</div>`}</div>`;
+    return`<div class="board">${meta}${vs}${done?`<div class="result">${esc(m.result)}</div>`:`<div class="small" style="color:var(--board-muted);text-align:center">${esc(tname(m.toss))} won the toss and chose to ${m.chose==="bat"?"bat":"bowl"}. Openers coming out.</div>`}</div>`;
   }
   const i=m.inn.length-1,inn=m.inn[i],st=innStats(inn),tg=targetOf(m),ov=ovFor(m,i);
+  const s1=m.inn.length>1?innStats(m.inn[0]):null;
+  const line=(tid,sc,ovs_,on)=>`<div class="tm${on?" on":""}">${badge(tid,40)}<div class="tmn"><b>${esc(tname(tid))}</b>${sc!==null?`<span>${sc}<small> (${ovs_})</small></span>`:`<span class="muted small">yet to bat</span>`}</div></div>`;
+  const first=m.inn[0].bat,second=first===m.a?m.b:m.a;
+  const strip=`<div class="teams">${line(first,m.inn.length>1?s1.runs+"/"+s1.wk:st.runs+"/"+st.wk,m.inn.length>1?ovs(s1.legal):ovs(st.legal),m.inn.length===1)}${line(second,m.inn.length>1?st.runs+"/"+st.wk:null,m.inn.length>1?ovs(st.legal):"",m.inn.length>1)}</div>`;
   let chase="";
   if(m.status==="done"||m.status==="super")chase=`<div class="result">${esc(m.result)}</div>`;
   else if(m.status==="break")chase=`<div class="chase">${esc(tname(inn.bowl))} need ${st.runs+1} to win off ${ovFor(m,1)} overs</div>`;
   else if(tg){const need=tg-st.runs,left=ov*6-st.legal;chase=`<div class="chase">${esc(tname(inn.bat))} need ${need} run${need===1?"":"s"} from ${left} ball${left===1?"":"s"}</div>`}
-  const s1=m.inn.length>1?innStats(m.inn[0]):null;
-  const rates=`<div class="rates"><span>Run rate <b>${rate(st.runs,st.legal)}</b></span>${tg&&m.status==="live"?`<span>Required <b>${rate(tg-st.runs,ov*6-st.legal)}</b></span><span>Target <b>${tg}</b>${m.tgt?" (revised)":""}</span>`:""}${s1?`<span>${esc(tname(m.inn[0].bat))} <b>${s1.runs}/${s1.wk}</b> (${ovs(s1.legal)})</span>`:""}</div>`;
+  const rates=m.status==="live"?`<div class="rates"><span>Run rate <b>${rate(st.runs,st.legal)}</b></span>${tg?`<span>Required <b>${rate(tg-st.runs,ov*6-st.legal)}</b></span><span>Target <b>${tg}</b>${m.tgt?" (revised)":""}</span>`:""}</div>`:"";
   let crease="",overRow="",flags="";
   if(m.status==="live"){
     const bl=id=>{if(!id)return"";const b=st.bat[id]||{r:0,b:0,f:0,s:0};return`<span class="nm">${esc(pname(id))}${id===inn.cur.s?" *":""}</span><span class="fig"><b>${b.r}</b> (${b.b})${b.f||b.s?` · ${b.f}×4 ${b.s}×6`:""}</span>`};
@@ -343,21 +359,40 @@ function boardHtml(m){
     if(isFreeHit(inn))flags+=`<span class="flag">Free hit</span>`;
     if(st.legal===Math.floor(ov/2)*6&&!st.cur.length&&st.legal>0)flags+=`<span class="flag">Halfway: batting end changes</span>`;
   }
-  return`<div class="board">${meta}<div class="score-row"><div class="score-team">${esc(tname(inn.bat))}${i?" · 2nd innings":""}</div><div class="score-big">${st.runs}<small>/${st.wk}</small></div><div class="score-ov">${ovs(st.legal)} <span>/ ${ov} ov</span></div></div>${chase}${rates}${crease}${overRow}${flags}</div>`;
+  const big=m.status==="live"?`<div class="score-row"><div class="score-big">${st.runs}<small>/${st.wk}</small></div><div class="score-ov">${ovs(st.legal)} <span>/ ${ov} ov</span></div></div>`:"";
+  return`<div class="board">${meta}${strip}${big}${chase}${rates}${crease}${overRow}${flags}</div>`;
 }
 function feedText(b){
-  const who=`${esc(pname(b.bw))} to ${esc(pname(b.s))}`;let d;
-  if(b.t==="run")d=b.r===0?"no run":b.r===4?"<b>FOUR</b>":b.r===6?"<b>SIX</b>":b.r+" run"+(b.r>1?"s":"");
+  const who=`<b>${esc(pname(b.bw))}</b> to <b>${esc(pname(b.s))}</b>`;let d;
+  if(b.t==="run")d=b.r===0?"no run":b.r===4?"<b class=\"four\">FOUR</b>":b.r===6?"<b class=\"six\">SIX</b>":b.r+" run"+(b.r>1?"s":"");
   else if(b.t==="wd")d="wide"+(b.r?`, ${b.r} run${b.r>1?"s":""} taken`:"");
-  else if(b.t==="nb")d="no ball"+(b.r?`, ${b.r===4?"<b>FOUR</b>":b.r===6?"<b>SIX</b>":b.r+" run"+(b.r>1?"s":"")} off the bat`:"");
+  else if(b.t==="nb")d="no ball"+(b.r?`, ${b.r===4?"<b class=\"four\">FOUR</b>":b.r===6?"<b class=\"six\">SIX</b>":b.r+" run"+(b.r>1?"s":"")} off the bat`:"");
   else d=`${b.r} ${b.t==="bye"?"bye":"leg bye"}${b.r>1?"s":""}`;
-  if(b.w)d=`<b>OUT!</b> ${esc(pname(b.w.out))} ${esc(dismissal(b))}`+(b.r?` (${b.r} run${b.r>1?"s":""} completed)`:"");
-  return`${who}, ${d}${b.fh?" · free hit":""}`;
+  if(b.w){const w=b.w,f=w.f?pname(w.f):"";const how=w.k==="c"?(w.f===b.bw?"caught and bowled":f?`caught by ${f}`:"caught"):w.k==="b"?"bowled":w.k==="ro"?(f?`run out by ${f}`:"run out"):w.k==="st"?`stumped${f?" by "+f:""}`:w.k==="lbw"?"lbw":w.k==="hw"?"hit wicket":"out";
+    d=`<b class="outx">OUT</b> ${esc(pname(w.out))} ${esc(how)}${b.r?` (${b.r} run${b.r>1?"s":""} completed)`:""}${b.t==="wd"?" (wide)":b.t==="nb"?" (no ball)":""}`}
+  return`${who}, ${d}${b.fh?" · free hit":""}<span class="ns">non-striker ${esc(pname(b.ns))}</span>`;
 }
 function feedHtml(m){
-  const rows=[];m.inn.forEach(inn=>innStats(inn).log.forEach(e=>rows.push(e)));
-  const recent=rows.slice(-15).reverse();if(!recent.length)return"";
-  return`<div><div class="label">Ball by ball</div><div class="feed">${recent.map(e=>`<div class="row"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></div>`).join("")}</div></div>`;
+  // group balls by over, newest over first, with an end-of-over summary (bowler, runs, score, batters)
+  const blocks=[];
+  m.inn.forEach((inn,ii)=>{
+    const st=innStats(inn);let runs=0,wk=0,bat={},cur=[],ovNo=1;let scoreAfter=0,wkAfter=0;
+    const flush=(complete)=>{if(!cur.length)return;const bw=cur[0].b.bw;const bs=cur.map(e=>e.b);const ovRuns=bs.reduce((a,b)=>a+ballRuns(b),0),ovWk=bs.filter(b=>b.w).length;
+      const lastB=last(cur).b;const batters=[lastB.s,lastB.ns].filter(Boolean).map(id=>{const x=bat[id]||{r:0,b:0};return`${esc(pname(id))} ${x.r} (${x.b})`}).join(" · ");
+      const bowlRuns=bs.reduce((a,b)=>a+(b.t==="bye"||b.t==="lb"?0:ballRuns(b)),0);const bowlTot=st.bowl[bw]||{l:0,r:0,w:0};
+      blocks.push({ii,ovNo,complete,bw,ovRuns,ovWk,scoreAfter,wkAfter,batters,bowlRuns,bowlTot,balls:cur.slice().reverse(),bat:tmeta(inn.bat).short});cur=[]};
+    inn.balls.forEach((b,idx)=>{const before=st.log[idx];runs+=ballRuns(b);if(b.w)wk++;
+      const bt=bat[b.s]||(bat[b.s]={r:0,b:0});if(b.t==="run"||b.t==="nb")bt.r+=b.r;if(b.t!=="wd")bt.b++;
+      cur.push(before);scoreAfter=runs;wkAfter=wk;
+      const legal=inn.balls.slice(0,idx+1).filter(isLegal).length;if(isLegal(b)&&legal%6===0){flush(true);ovNo=legal/6+1}});
+    flush(false);
+  });
+  if(!blocks.length)return"";
+  const recent=blocks.slice(-4).reverse();
+  return`<div><div class="label">Ball by ball</div><div class="feed">${recent.map(o=>`
+    <div class="ovhead${o.complete?"":" open"}"><div class="ovh1"><span><b>${o.complete?"End of over "+o.ovNo:"Over "+o.ovNo}</b> · ${o.ovRuns} run${o.ovRuns===1?"":"s"}${o.ovWk?` · ${o.ovWk} wkt`:""}</span><b class="sc">${esc(o.bat)} ${o.scoreAfter}/${o.wkAfter}</b></div>
+    <div class="ovh2"><span>${o.batters}</span><span>${esc(pname(o.bw))} ${o.bowlTot.w}-${o.bowlTot.r} (${ovs(o.bowlTot.l)})</span></div></div>
+    ${o.balls.map(e=>`<div class="row${e.b.w?" wk":""}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></div>`).join("")}`).join("")}</div>${blocks.length>4?`<p class="kv">Showing the last 4 overs. Full details are in the scorecard.</p>`:""}</div>`;
 }
 function cardHtml(m,i,open){
   const inn=m.inn[i],st=innStats(inn),live=m.status==="live"&&!inn.closed;
@@ -381,6 +416,12 @@ function matchDetail(m){
   ${m.super?`<div class="kv"><b>Super Over:</b> ${esc(m.super)}</div>`:""}`;
 }
 const byNo=(a,b)=>(a.no||0)-(b.no||0);
+function champion(){const f=Object.values(M).find(m=>m.stage==="F"&&m.status==="done"&&m.winner&&m.winner!=="tie"&&m.winner!=="nr");return f?f.winner:null}
+function miniTable(g){const rows=pointsTable(g).slice(0,5);if(!rows.length||!rows.some(r=>r.p))return"";
+  return`<div class="mini"><div class="label">Group ${g}</div>${rows.map((r,i)=>`<div class="mr${i<3?" q":""}">${badge(r.id,22)}<span class="tn">${esc(tmeta(r.id).short)}</span><span class="muted">${r.p}</span><b>${r.pts}</b><span class="nrr">${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</span></div>`).join("")}</div>`}
+function topCards(){const{bat,bowl}=tourStats();const b=Object.entries(bat).sort((a,b)=>b[1].r-a[1].r)[0],w=Object.entries(bowl).sort((a,b)=>b[1].w-a[1].w||a[1].r-b[1].r)[0],sx=Object.entries(bat).sort((a,b)=>b[1].s-a[1].s)[0];
+  if(!b)return"";const card=(lab,id,val,unit)=>`<button class="tcard" data-act="tab" data-v="stats">${badge(pteam(id),30)}<span class="lab">${lab}</span><b>${esc(pname(id))}</b><span class="val">${val}<small> ${unit}</small></span></button>`;
+  return`<div class="label">Leading the tournament</div><div class="tcards">${card("Most runs",b[0],b[1].r,"runs")}${w?card("Most wickets",w[0],w[1].w,"wkts"):""}${sx&&sx[1].s?card("Most sixes",sx[0],sx[1].s,"sixes"):""}</div>`}
 function liveView(){
   if(!T)return`<section><div class="empty"><strong>Scores start on 29 November</strong>${canScore?"Open Setup to add the ten teams and their squads.":"Live scores, scorecards, the points table and player stats appear here once the tournament begins."}</div></section>`;
   const list=Object.values(M);
@@ -388,18 +429,27 @@ function liveView(){
   const m=(ui.sel&&M[ui.sel])||live[0];
   if(m){
     const others=live.filter(x=>x.id!==m.id);
-    return`<section>${ui.sel&&!live.includes(m)&&live.length?`<button class="btn sm" data-act="unsel">Back to the live match</button>`:""}${matchDetail(m)}
+    return`<section>${ui.sel&&!live.includes(m)?`<button class="btn sm" data-act="unsel">← Back</button>`:""}${matchDetail(m)}
     ${others.length?`<div class="row-btns">${others.map(o=>`<button class="btn sm" data-act="view" data-id="${o.id}">Also live: ${esc(tname(o.a))} v ${esc(tname(o.b))}</button>`).join("")}</div>`:""}</section>`;
   }
   const next=list.filter(x=>x.status==="scheduled").sort(byNo)[0];
-  const lastDone=list.filter(x=>x.status==="done").sort((a,b)=>(b.upd||0)-(a.upd||0))[0];
-  if(!next&&!lastDone)return`<section><div class="empty"><strong>No match in progress</strong>${canScore?"Open Score to start a match.":"The next match will show here live, ball by ball."}</div></section>`;
-  return`<section>${next?`<div class="label">Next match</div>${boardHtml(next)}${pollHtml(next)}`:""}${lastDone?`<div class="label">Latest result</div>${boardHtml(lastDone)}<button class="btn sm" data-act="view" data-id="${lastDone.id}">Full scorecard</button>`:""}</section>`;
+  const done=list.filter(x=>x.status==="done").sort((a,b)=>(b.upd||0)-(a.upd||0)||(b.no||0)-(a.no||0));
+  const champ=champion();
+  if(!next&&!done.length)return`<section>${miniTable("A")?"":""}<div class="empty"><strong>No match in progress</strong>${canScore?"Open Score to start a match.":"The next match will show here live, ball by ball."}</div></section>`;
+  const hero=champ?`<div class="board champ"><div class="meta"><span class="pill done">Champions</span><span>${esc(STAGES.F)}</span></div><div class="champ-in">${badge(champ,84)}<div><div class="champ-name">${esc(tname(champ))}</div><div class="small" style="color:var(--board-muted)">${esc(done.find(x=>x.stage==="F")?.result||"")}</div></div></div><button class="btn sm ghost" data-act="view" data-id="${done.find(x=>x.stage==="F")?.id}">Final scorecard</button></div>`
+    :next?`<div class="label">Next match</div>${boardHtml(next)}${pollHtml(next)}`:"";
+  const recent=done.slice(0,champ?2:3);
+  return`<section>${hero}
+  ${recent.length?`<div class="label">${champ?"Recent results":"Latest results"}</div><div class="mlist">${recent.map(matchRow).join("")}</div>`:""}
+  ${done.length?`<div class="minis">${miniTable("A")}${miniTable("B")}</div><button class="btn sm" data-act="tab" data-v="table">Full points table</button>`:""}
+  ${topCards()}
+  </section>`;
 }
 function matchRow(m){
   const sc=id=>{const i=m.inn.findIndex(x=>x.bat===id);if(i<0)return"";const s=innStats(m.inn[i]);return`${s.runs}/${s.wk} (${ovs(s.legal)})`};
   const first=m.inn[0]?.bat||m.a,second=first===m.a?m.b:m.a;
-  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}</span>${statusPill(m)}</div><div class="t"><span>${esc(tname(first))}</span><span>${sc(first)}</span></div><div class="t"><span>${esc(tname(second))}</span><span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
+  const win=m.winner&&m.winner!=="tie"&&m.winner!=="nr"?m.winner:null;
+  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first)}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second)}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
 }
 function matchesView(){
   if(!T)return liveView();
@@ -411,7 +461,8 @@ function matchesView(){
 }
 function groupTable(g){
   const rows=pointsTable(g);if(!rows.length)return"";
-  return`<h2>Group ${g}</h2><div class="tbl"><table><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>NR</th><th>Pts</th><th>NRR</th></tr></thead><tbody>${rows.map((r,i)=>`<tr${i<3&&r.p?' class="q"':""}><td class="n"><b>${esc(tname(r.id))}</b>${r.p&&i===0?'<span class="tag">SF</span>':r.p&&i<3?'<span class="tag">QF</span>':""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td><td>${r.t}</td><td>${r.nr}</td><td><b>${r.pts}</b></td><td>${(r.nrr>=0?"+":"")+r.nrr.toFixed(3)}</td></tr>`).join("")}</tbody></table></div>`;
+  const tnr=rows.some(r=>r.t||r.nr);
+  return`<h2>Group ${g}</h2><div class="tbl"><table class="pts"><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th>${tnr?"<th>T/NR</th>":""}<th>Pts</th><th>NRR</th></tr></thead><tbody>${rows.map((r,i)=>`<tr${i<3&&r.p?' class="q"':""}><td class="n"><span class="tl">${badge(r.id,24)}<span class="tn"><b>${esc(tname(r.id))}</b></span></span>${r.p&&i===0?'<span class="tag">SF</span>':r.p&&i<3?'<span class="tag">QF</span>':""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td>${tnr?`<td>${r.t+r.nr||""}</td>`:""}<td><b>${r.pts}</b></td><td>${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function tableView(){
   if(!T)return liveView();
@@ -421,7 +472,7 @@ function statsView(){
   if(!T)return liveView();
   const{bat,bowl}=tourStats();
   const chips=[["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
-  const nm=id=>`<td class="n"><b>${esc(pname(id))}</b><span class="how">${esc(tname(pteam(id)))}</span></td>`;
+  const nm=id=>`<td class="n"><span class="tl">${badge(pteam(id),24)}<span class="tn"><b>${esc(pname(id))}</b><span class="how">${esc(tmeta(pteam(id)).short)}</span></span></span></td>`;
   let body="";
   if(ui.stat==="wkts"){
     const rows=Object.entries(bowl).filter(([,x])=>x.l>0).sort((a,b)=>b[1].w-a[1].w||(a[1].r*6/a[1].l)-(b[1].r*6/b[1].l)).slice(0,20);
