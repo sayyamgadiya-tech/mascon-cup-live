@@ -193,7 +193,7 @@ function fantasyBoard(){
 }
 function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,role:p.role||"",team:t.name,tid:t.id})))}
 function fantasyView(){
-  if(!T||!T.teams.length)return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div></section>`;
+  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div></section>`;
   loadFantasy();
   const locked=fantasyLocked(),pts=fantasyPoints();
   const board=fantasyBoard();
@@ -584,10 +584,11 @@ function poolPanel(d){
   const show=ui.poolAll?list:list.filter(p=>!owner[p.reg]);
   const opts=tid=>`<option value="">— unsold —</option>`+d.teams.filter(t=>t.name.trim()).map(t=>`<option value="${t.id}"${t.id===tid?" selected":""}>${esc(t.name)} (${count(t)})</option>`).join("");
   const sold=Object.keys(owner).length;
-  return`<div class="panel"><h2>Auction pool</h2><p class="kv">${sold} of ${POOL.length} players assigned. Pick a team next to each player as they're sold, then <b>Save teams</b> at the bottom. Nothing is shared until you save.</p>
+  return`<details class="card"${sold<POOL.length&&T&&!squadsReadyFlag()?" open":""}><summary><span>Auction pool</span><span class="muted small">${sold} of ${POOL.length} assigned</span></summary><div class="in"><p class="kv">${sold} of ${POOL.length} players assigned. Pick a team next to each player as they're sold, then <b>Save teams</b> at the bottom. Nothing is shared until you save.</p>
   <div class="row-btns"><input id="pool-q" placeholder="Search name or reg no." value="${esc(ui.poolQ||"")}" data-poolq="1" style="flex:1;min-width:160px"><label class="check"><input type="checkbox" id="pool-all" data-poolall="1"${ui.poolAll?" checked":""}> Show sold too</label></div>
-  <div class="pool">${show.map(p=>`<div class="prow pr"><span class="pn"><b>${esc(p.name)}</b> <span class="muted small">#${p.reg} · ${p.role}${p.avail!=="All"?" · "+esc(p.avail)+" only":""}</span></span><select data-pool="${p.reg}" aria-label="Team for ${esc(p.name)}">${opts(owner[p.reg])}</select></div>`).join("")||`<div class="kv">No players match.</div>`}</div></div>`;
+  <div class="pool">${show.map(p=>`<div class="prow pr"><span class="pn"><b>${esc(p.name)}</b> <span class="muted small">#${p.reg} · ${p.role}${p.avail!=="All"?" · "+esc(p.avail)+" only":""}</span></span><select data-pool="${p.reg}" aria-label="Team for ${esc(p.name)}">${opts(owner[p.reg])}</select></div>`).join("")||`<div class="kv">No players match.</div>`}</div></div></details>`;
 }
+function squadsReadyFlag(){return!!T&&T.teams.length>=2&&T.teams.every(t=>t.players.length>=DEF.minXi)}
 function setupView(){
   const d=ui.draft||(ui.draft=T?clone(T):{...clone(DEF),teams:blankTeams()});
   const used=new Set(Object.values(M).flatMap(m=>[m.a,m.b]));
@@ -597,7 +598,13 @@ function setupView(){
     <div class="prow"><input id="tn-${t.id}" value="${esc(t.name)}" placeholder="Team name" data-tname="${t.id}" aria-label="Team name"><select id="tg-${t.id}" data-tgroup="${t.id}" aria-label="Group"><option${t.group==="A"?" selected":""}>A</option><option${t.group==="B"?" selected":""}>B</option></select></div>
     ${t.players.map((p,i)=>`<div class="prow"><input id="pn-${p.id}" value="${esc(p.name)}" placeholder="Player ${i+1}${i===0?" (icon)":i===1?" (marquee)":""}" data-pname="${t.id}:${p.id}" aria-label="Player ${i+1}"><button class="btn sm" data-act="delPlayer" data-id="${t.id}:${p.id}" aria-label="Remove player">✕</button></div>`).join("")}
     <div class="row-btns"><button class="btn sm" data-act="addPlayer" data-id="${t.id}">+ Add player</button><button class="btn sm warn" data-act="delTeam" data-id="${t.id}"${used.has(t.id)?" disabled":""}>Remove team</button></div></div></details>`};
+  const squadsReady=T&&T.teams.length>=2&&T.teams.every(t=>t.players.length>=DEF.minXi);
+  const hasFixtures=league.length>0;
   return`<section>${confirmHtml()}
+  <div class="panel"><h2>Quick start</h2>
+  <div class="row-btns"><button class="btn pri" data-act="realSetup"${hasFixtures&&!T?.name?.includes("DEMO")?" disabled":""}>Set up the real tournament</button><button class="btn" data-act="loadDemo">Load demo tournament</button>${T?`<button class="btn warn" data-act="reset">Delete everything</button>`:""}</div>
+  <p class="kv"><b>Real tournament:</b> the 10 franchises with their icons, in groups, plus all 20 league fixtures. Players are added from the Auction pool below after 1 November.<br><b>Demo:</b> a full simulated tournament with fake scores and fantasy entries, for trying every screen. Delete it before the real setup.</p>
+  <div id="qs-msg"></div></div>
   <div class="panel"><h2>Tournament</h2>
   <div class="field"><label class="label" for="st-name">Name</label><input id="st-name" value="${esc(d.name)}" data-bind="name"></div>
   <div class="grid2">
@@ -618,8 +625,7 @@ function setupView(){
   <div class="grid2"><div class="field"><label class="label" for="pin-cur">Current PIN</label><input id="pin-cur" type="password" inputmode="numeric" autocomplete="current-password"></div>
   <div class="field"><label class="label" for="pin-new">New PIN (6+ digits)</label><input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password"></div></div>
   <div class="row-btns"><button class="btn" data-act="changePin">Change PIN</button><button class="btn" data-act="logout">Log out of scoring</button></div></div>
-  <div class="row-btns">${T?`<button class="btn warn" data-act="reset">Delete tournament and all matches</button>`:""}<button class="btn" data-act="loadDemo">Load demo tournament</button></div>
-  <p class="kv">The demo is a full simulated tournament (league to final, 40 fantasy entries) for trying every screen. Delete it before entering the real squads.</p>
+
   </section>`;
 }
 function roundRobin(ids){
@@ -750,10 +756,11 @@ const acts={
     d.wideRuns=Math.max(0,parseInt(d.wideRuns,10)||0);d.nbRuns=Math.max(0,parseInt(d.nbRuns,10)||0);
     d.teams=d.teams.map(t=>({id:t.id,name:(t.name||"").trim(),group:t.group,players:t.players.map(p=>{const o={id:p.id,name:(p.name||"").trim()};if(p.reg)o.reg=p.reg;if(p.role)o.role=p.role;return o}).filter(p=>p.name)})).filter(t=>t.name||t.players.length);
     const short=d.teams.find(t=>t.players.length<DEF.minXi);
-    const bad=d.teams.length<2?"Add at least two teams with names.":d.teams.find(t=>!t.name)?"Every team needs a name.":short?`${short.name} needs at least ${DEF.minXi} players.`:"";
+    const started=Object.values(M).some(m=>(m.inn||[]).length);
+    const bad=d.teams.length<2?"Add at least two teams with names.":d.teams.find(t=>!t.name)?"Every team needs a name.":(short&&started)?`${short.name} needs at least ${DEF.minXi} players.`:"";
     if(bad){flash(bad);return}
     T=d;ui.draft=clone(d);
-    setDoc(doc(db,"tournament","main"),strip(d)).then(()=>flash("Saved. Everyone sees these teams now.",true)).catch(e=>flash(e?.code==="permission-denied"?"Not saved: log in as scorer again.":"Not saved. Check your connection."));
+    setDoc(doc(db,"tournament","main"),strip(d)).then(()=>flash(short?`Saved. ${short.name} has under ${DEF.minXi} players; finish the squads before match day.`:"Saved. Everyone sees these teams now.",true)).catch(e=>flash(e?.code==="permission-denied"?"Not saved: log in as scorer again.":"Not saved. Check your connection."));
     render();flash("Saving…",true)},
   fixtures:()=>{const rr={A:roundRobin(T.teams.filter(t=>t.group==="A").map(t=>t.id)),B:roundRobin(T.teams.filter(t=>t.group==="B").map(t=>t.id))};
     let no=Math.max(0,...Object.values(M).map(m=>m.no||0));const rounds=Math.max(rr.A.length,rr.B.length);const batch=writeBatch(db);
@@ -771,8 +778,18 @@ const acts={
       await batch.commit();for(const b of extra)await b.commit();
       fantasyLockWritten=false;M={};T=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;FT.all=null;FT.mine=null;render();flash("Everything deleted.",true)}
     catch(e){flash("Not fully deleted. Check your connection and try again.")}}),
+  realSetup:()=>ask(T?"Replace the current teams and matches with the real tournament setup (10 franchises, icons, 20 fixtures)? Scores and fantasy entries are deleted.":"Set up the real tournament now? 10 franchises with icons and 20 league fixtures.","Set up",async()=>{
+    flashAt("qs-msg","Setting up…",true);
+    try{const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,"matches",id));wipe.delete(doc(db,"polls",id))});wipe.delete(doc(db,"meta","lock"));
+      const fs=await getDocs(collection(db,"fantasy"));fs.docs.forEach(x=>wipe.delete(x.ref));await wipe.commit();
+      const d={...clone(DEF),teams:blankTeams()};d.teams=d.teams.map(t=>({id:t.id,name:t.name,group:t.group,players:t.players.filter(p=>p.name)}));
+      const b=writeBatch(db);b.set(doc(db,"tournament","main"),strip(d));
+      const rr={A:roundRobin(d.teams.filter(t=>t.group==="A").map(t=>t.id)),B:roundRobin(d.teams.filter(t=>t.group==="B").map(t=>t.id))};let no=0;
+      for(let r=0;r<Math.max(rr.A.length,rr.B.length);r++)for(const g of["A","B"])for(const[a,bb]of rr[g][r]||[]){const mid=uidGen("m");b.set(doc(db,"matches",mid),{id:mid,no:++no,stage:g,a,b:bb,status:"scheduled",inn:[],result:"",winner:null,overs:d.overs,upd:Date.now()})}
+      await b.commit();fantasyLockWritten=false;FT.all=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;render();flashAt("qs-msg",`Done: 10 teams and ${no} league fixtures created. Assign players from the Auction pool after 1 November.`,true)}
+    catch(e){flashAt("qs-msg","Setup failed. Check your connection and try again.")}}),
   loadDemo:()=>ask("Load the demo tournament? This replaces everything currently saved (teams, matches, predictions, fantasy teams) with simulated data.","Load demo",async()=>{
-    flash("Loading demo…",true);
+    flashAt("qs-msg","Loading demo…",true);
     try{const r=await fetch("demo.json",{cache:"no-store"});if(!r.ok)throw new Error("fetch");const d=await r.json();
       // wipe first
       const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,"matches",id));wipe.delete(doc(db,"polls",id))});wipe.delete(doc(db,"meta","lock"));
@@ -782,7 +799,7 @@ const acts={
       (d.fantasy||[]).forEach(f=>b.set(doc(db,"fantasy",f.id),{name:f.name,p:f.p,uid:f.uid,at:Date.now(),demo:true}));
       b.set(doc(db,"meta","lock"),{at:Date.now(),demo:true});
       await b.commit();fantasyLockWritten=true;FT.all=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;ui.tab="live";render();flash("Demo loaded.",true)}
-    catch(e){flash(e?.code==="permission-denied"?"Demo not loaded: paste the latest firestore.rules into Firebase first.":"Demo not loaded. Check your connection.")}}),
+    catch(e){flashAt("qs-msg",e?.code==="permission-denied"?"Demo not loaded: paste the latest firestore.rules into Firebase first.":"Demo not loaded. Check your connection.")}}),
 };
 function flashAt(id,msg,good){const el=$("#"+id);if(el)el.innerHTML=`<div class="msg" style="color:var(${good?"--good":"--out"})">${esc(msg)}</div>`}
 function flash(msg,good){
