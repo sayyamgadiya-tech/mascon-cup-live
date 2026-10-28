@@ -6,16 +6,18 @@ import { initializeFirestore, getFirestore, persistentLocalCache, persistentMult
 const CFG = window.MASCON_CONFIG || {};
 const POOL = window.MASCON_POOL || [];
 const PRESET = window.MASCON_TEAMS || [];
-const DEF={name:"Ahore Mascon Cup 2026",overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
+const DEF={name:"Ahore Mascon Cup 2026",emergingAge:21,overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
 const STAGES={A:"Group A",B:"Group B",QF1:"Quarter-final 1",QF2:"Quarter-final 2",SF1:"Semi-final 1",SF2:"Semi-final 2",F:"Final"};
 const isLeague=m=>m.stage==="A"||m.stage==="B";
 const LIVE=["live","break","super","setup"];
 
 let T=null,M={},db=null,auth=null,uid=null,canScore=false,loaded={t:false,m:false},fatal="";
-let ui={tab:"live",sel:null,scoreSel:null,sheet:null,draft:null,nm:null,toss:null,stat:"runs",loginErr:"",busyLogin:false};
+let ui={tab:"live",sel:null,scoreSel:null,sheet:null,draft:null,nm:null,toss:null,stat:"mvp",fopen:null,loginErr:"",busyLogin:false};
 let pendingConfirm=null,renderDeferred=false,syncState={c:"sync",t:""};
 const polls={};
 let fantasyLockWritten=false;
+let FAN={name:null,all:null,polls:null,at:0};
+try{FAN.name=localStorage.getItem("mc-fan")||null}catch(e){}
 let FT={mine:null,myId:null,all:null,allAt:0,draft:null,q:"",err:""};
 try{FT.myId=localStorage.getItem("mc-fid")||null}catch(e){}
 try{const h=location.hash.slice(1);if(["live","matches","table","stats","fantasy"].includes(h))ui.tab=h}catch(e){}
@@ -38,7 +40,7 @@ function tmeta(id){const t=teamOf(id);if(!t)return{name:"TBD",color:"#64748B",lo
 function badge(id,size){const m=tmeta(id);const sz=size||32;
   return m.logo?`<img class="badge" src="${esc(m.logo)}" alt="" width="${sz}" height="${sz}" style="--sz:${sz}px" onerror="this.outerHTML='<span class=badge style=\'--sz:${sz}px;background:${m.color}\'>${esc(m.initials)}</span>'">`
     :`<span class="badge" style="--sz:${sz}px;background:${m.color}">${esc(m.initials)}</span>`}
-const teamLine=(id,cls)=>`<span class="tl ${cls||""}">${badge(id,26)}<span class="tn">${esc(tname(id))}</span></span>`;
+const teamLine=(id,cls)=>`<span class="tl ${cls||""}" data-act="team" data-id="${id}">${badge(id,26)}<span class="tn">${esc(tname(id))}</span></span>`;
 function pteam(id){for(const t of T?.teams||[])if(t.players.some(p=>p.id===id))return t.id;return null}
 const isLegal=b=>b.t!=="wd"&&b.t!=="nb";
 const ovs=l=>Math.floor(l/6)+"."+(l%6);
@@ -190,6 +192,20 @@ function fantasyPoints(){
   }));
   return pts;
 }
+function mvpTable(filter){
+  const pts=fantasyPoints();const{bat,bowl}=tourStats();const field={},mt={};
+  Object.values(M).forEach(m=>(m.inn||[]).forEach(inn=>{const seen=new Set();inn.balls.forEach(b=>{[b.s,b.ns,b.bw].forEach(id=>{if(id&&!seen.has(id)){seen.add(id);mt[id]=(mt[id]||new Set());mt[id].add(m.id)}});
+    if(b.w&&b.w.f&&(b.w.k==="c"||b.w.k==="st"||b.w.k==="ro")){field[b.w.f]=(field[b.w.f]||0)+1;mt[b.w.f]=(mt[b.w.f]||new Set());mt[b.w.f].add(m.id)}})}));
+  return Object.keys(pts).filter(id=>pteam(id)&&(!filter||filter(id))).map(id=>({id,pts:pts[id],r:bat[id]?.r||0,w:bowl[id]?.w||0,f:field[id]||0,m:mt[id]?.size||0})).sort((a,b)=>b.pts-a.pts||b.r-a.r);
+}
+function matchMvp(m){
+  if(!m.inn||!m.inn.length)return null;const pts={};const add=(id,n)=>{if(id)pts[id]=(pts[id]||0)+n};
+  m.inn.forEach(inn=>{const st=innStats(inn);
+    st.batOrder.forEach(id=>{const b=st.bat[id];let p=b.r*FP.run+b.f*FP.four+b.s*FP.six;if(b.r>=50)p+=FP.fifty;else if(b.r>=30)p+=FP.thirty;if(b.out&&b.r===0&&b.b>0)p+=FP.duck;add(id,p)});
+    st.bowlOrder.forEach(id=>{const b=st.bowl[id];add(id,b.w*FP.wkt+(b.w>=3?FP.haul3:0))});
+    inn.balls.forEach(b=>{if(b.w&&b.w.f&&(b.w.k==="c"||b.w.k==="st"||b.w.k==="ro"))add(b.w.f,FP.field);if(b.t==="run"&&b.r===0&&!b.w)add(b.bw,FP.dot)});});
+  const top=Object.entries(pts).sort((a,b)=>b[1]-a[1])[0];return top?{id:top[0],pts:top[1]}:null;
+}
 function fantasyLocked(){return Object.values(M).some(m=>(m.inn||[]).some(i=>i.balls.length>0))}
 async function loadFantasy(force){
   if(!db)return;const now=Date.now();if(!force&&FT.all&&now-FT.allAt<120000)return;FT.allAt=now;
@@ -200,9 +216,27 @@ function fantasyBoard(){
   const pts=fantasyPoints();
   return (FT.all||[]).map(t=>({...t,pts:(t.p||[]).reduce((a,id)=>a+(pts[id]||0),0)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name));
 }
-function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,role:p.role||"",team:t.name,tid:t.id})))}
+function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,role:p.role||"",age:p.age||null,team:t.name,tid:t.id})))}
+function pAge(id){for(const t of T?.teams||[]){const p=t.players.find(p=>p.id===id);if(p)return p.age||null}return null}
+async function loadFans(force){
+  if(!db)return;const now=Date.now();if(!force&&FAN.all&&now-FAN.at<120000)return;FAN.at=now;
+  try{const [f,p]=await Promise.all([getDocs(collection(db,"fans")),getDocs(collection(db,"polls"))]);
+    FAN.all={};f.docs.forEach(d=>FAN.all[d.id]=d.data().name||"Fan");FAN.polls={};p.docs.forEach(d=>FAN.polls[d.id]=d.data());scheduleRender()}catch(e){}
+}
+function predictionBoard(){
+  if(!FAN.polls)return[];const score={},tot={};
+  Object.entries(FAN.polls).forEach(([mid,picks])=>{const m=M[mid];if(!m||m.status!=="done"||!m.winner||m.winner==="tie"||m.winner==="nr")return;
+    Object.entries(picks).forEach(([u,team])=>{tot[u]=(tot[u]||0)+1;if(team===m.winner)score[u]=(score[u]||0)+1})});
+  return Object.keys(tot).map(u=>({u,name:(FAN.all&&FAN.all[u])||"Fan",c:score[u]||0,n:tot[u]})).sort((a,b)=>b.c-a.c||a.n-b.n||a.name.localeCompare(b.name));
+}
+function predictionHtml(){
+  loadFans();const rows=predictionBoard();const decided=Object.values(M).filter(m=>m.status==="done"&&m.winner&&m.winner!=="tie"&&m.winner!=="nr").length;
+  if(!rows.length)return`<h2>Prediction league</h2><p class="kv">Predict the winner of each match before the toss. One point per correct call. The table appears after the first result.</p>`;
+  const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1;
+  return`<h2>Prediction league</h2><p class="kv">One point per correct winner. ${decided} match${decided===1?"":"es"} decided.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Fan</th><th>Correct</th><th>Calls</th></tr></thead><tbody>${rows.slice(0,50).map((r,i)=>`<tr${r.u===uid?' class="q"':""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(r.name)}</b>${r.u===uid?'<span class="tag">YOU</span>':""}</td><td><b>${r.c}</b></td><td>${r.n}</td></tr>`).join("")}</tbody></table></div>`;
+}
 function fantasyView(){
-  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div></section>`;
+  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div>${T?predictionHtml():""}</section>`;
   loadFantasy();
   const locked=fantasyLocked(),pts=fantasyPoints();
   const board=fantasyBoard();
@@ -218,9 +252,11 @@ function fantasyView(){
   }else mine=locked?`<div class="panel"><h2>Entries closed</h2><p class="kv">Fantasy teams locked when the first ball was bowled.</p></div>`
     :`<div class="panel"><h2>Build your XIII</h2><p class="kv">Pick any 13 players from the 10 squads. One team per person; it locks at the first ball on 29 November.</p><button class="btn pri" data-act="fNew">Pick my 13</button></div>`;
   const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1;
-  const lb=board.length?`<h2>Leaderboard</h2><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr${t.id===FT.mine?.id?' class="q"':""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
+  const picksPanel=t=>`<div class="pickpanel"><div class="label">${esc(t.name)} · 13 players</div><div class="pickgrid">${(t.p||[]).map(id=>({id,p:pts[id]||0})).sort((a,b)=>b.p-a.p).map(x=>`<span class="pk">${badge(pteam(x.id),20)}<span>${esc(pname(x.id))}</span><b>${x.p}</b></span>`).join("")}</div></div>`;
+  const openT=locked&&ui.fopen?board.find(t=>t.id===ui.fopen):null;
+  const lb=board.length?`<h2>Leaderboard</h2>${locked?`<p class="kv">Tap a top-10 team to see its 13 players.</p>`:`<p class="kv">Picks are hidden until entries lock at the first ball.</p>`}${openT?picksPanel(openT):""}<div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr class="${t.id===FT.mine?.id?"q ":""}${locked&&i<10?"exp":""}${ui.fopen===t.id?" sel":""}"${locked&&i<10?` data-act="fopen" data-id="${t.id}"`:""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}${locked&&i<10?`<span class="caret">${ui.fopen===t.id?"▾":"▸"}</span>`:""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
   const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12</div></details>`;
-  return`<section>${mine}${lb}${scoring}</section>`;
+  return`<section>${mine}${lb}${scoring}${predictionHtml()}</section>`;
 }
 function pickerHtml(){
   const d=FT.draft,q=FT.q.trim().toLowerCase();
@@ -265,14 +301,16 @@ function pollHtml(m){
   if(!open&&!tot)return"";
   const side=(id,n,pc)=>`<button class="pick${p.mine===id?" mine":""}" data-act="vote" data-m="${m.id}" data-t="${id}"${open&&uid?"":" disabled"}>${badge(id,22)}<span>${esc(tmeta(id).short)}${p.mine===id?" ✓":""}</span><b>${tot?pc+"%":"–"}</b></button>`;
   const head=open?(p.mine?"Your prediction is in. You can change it until the first ball.":"Who wins? Tap to predict."):`Fans' prediction · ${tot} vote${tot===1?"":"s"}`;
-  return`<div class="poll"><div class="label">${head}</div><div class="bar"><span style="width:${pa}%"></span></div><div class="picks">${side(m.a,ca,pa)}${side(m.b,cb,100-pa)}</div>${open&&tot?`<div class="kv">${tot} vote${tot===1?"":"s"} so far</div>`:""}</div>`;
+  const nameBox=open&&!FAN.name?`<div class="prow"><input id="fan-name" placeholder="Your name for the prediction league" maxlength="30" data-fanname="1"><button class="btn sm" data-act="fanSave">OK</button></div>`:"";
+  return`<div class="poll"><div class="label">${head}</div>${nameBox}<div class="bar"><span style="width:${pa}%"></span></div><div class="picks">${side(m.a,ca,pa)}${side(m.b,cb,100-pa)}</div>${open&&tot?`<div class="kv">${tot} vote${tot===1?"":"s"} so far</div>`:""}</div>`;
 }
 async function vote(mid,team){
   if(!uid){flash("Predictions need a connection. Try again in a moment.");return}
+  if(!FAN.name){flash("Enter your name first so your predictions count in the league.");const n=$("#fan-name");if(n)n.focus();return}
   const p=polls[mid]||{c:{},mine:null,at:0};
   if(p.mine)p.c[p.mine]=Math.max(0,(p.c[p.mine]||1)-1);
   p.c[team]=(p.c[team]||0)+1;p.mine=team;polls[mid]=p;render();
-  try{await setDoc(doc(db,"polls",mid),{[uid]:team},{merge:true});loadPoll(mid,true)}
+  try{await setDoc(doc(db,"polls",mid),{[uid]:team},{merge:true});setDoc(doc(db,"fans",uid),{name:FAN.name,uid},{merge:true}).catch(()=>{});loadPoll(mid,true)}
   catch(e){flash("Prediction not saved. Voting closes at the first ball.");loadPoll(mid,true)}
 }
 
@@ -319,13 +357,16 @@ function headerHtml(){
   if(canScore){t.push(["score","Score"]);t.push(["setup","Setup"])}
   const nm=(T?.name||DEF.name).replace(/\s*\(DEMO\)\s*/i,"");const demo=/DEMO/i.test(T?.name||"");
   const parts=nm.split(/\s+/);const eyebrow=parts.length>2?parts[0]:"";const main=parts.length>2?parts.slice(1).join(" "):nm;
-  return`<div class="wrap"><div class="brand"><span class="mark" aria-hidden="true"></span><h1>${eyebrow?`<small>${esc(eyebrow)}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?`<button class="btn sm ghost" data-act="tab" data-v="setup">Setup</button>`:`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
+  return`<div class="wrap"><div class="brand"><span class="mark" aria-hidden="true"></span><h1>${eyebrow?`<small>${esc(eyebrow)}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
   <nav class="tabs" aria-label="Sections">${t.map(([k,l])=>`<button data-act="tab" data-v="${k}" aria-current="${ui.tab===k}">${l}</button>`).join("")}</nav></div>${sponsorHtml()}`;
 }
 function sponsorHtml(){
   const sp=(CFG.sponsors||[]).filter(x=>x&&x.name);if(!sp.length)return"";
   return`<div class="sponsors"><div class="wrap"><span class="label">Presented by</span>${sp.map(x=>x.logo?`<img src="${esc(x.logo)}" alt="${esc(x.name)}">`:`<span class="spn">${esc(x.name)}</span>`).join("")}</div></div>`;
 }
+const fmtWhen=w=>{if(!w)return"";const d=new Date(w);if(isNaN(d))return"";return d.toLocaleString("en-IN",{weekday:"short",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"})};
+const fmtDay=w=>{if(!w)return"Date to be announced";const d=new Date(w);if(isNaN(d))return"Date to be announced";return d.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long"})};
+const fmtTime=w=>{if(!w)return"";const d=new Date(w);return isNaN(d)?"":d.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"})};
 const stageLabel=m=>`${STAGES[m.stage]||""}${isLeague(m)?" · Match "+m.no:""}`;
 function statusPill(m){
   return m.status==="live"?`<span class="pill live">Live</span>`:m.status==="break"?`<span class="pill live">Innings break</span>`:m.status==="super"?`<span class="pill live">Super Over</span>`
@@ -333,19 +374,19 @@ function statusPill(m){
 }
 function boardHtml(m){
   const meta=`<div class="meta">${statusPill(m)}<span>${esc(stageLabel(m))}</span><span>· ${mOvers(m)} overs</span></div>`;
-  const vs=`<div class="vsrow"><div class="vst">${badge(m.a,56)}<b>${esc(tname(m.a))}</b></div><span class="vsx">vs</span><div class="vst">${badge(m.b,56)}<b>${esc(tname(m.b))}</b></div></div>`;
-  if(m.status==="scheduled")return`<div class="board">${meta}${vs}<div class="small" style="color:var(--board-muted);text-align:center">Toss not done yet.</div></div>`;
+  const vs=`<div class="vsrow"><div class="vst" data-act="team" data-id="${m.a}">${badge(m.a,56)}<b>${esc(tname(m.a))}</b></div><span class="vsx">vs</span><div class="vst" data-act="team" data-id="${m.b}">${badge(m.b,56)}<b>${esc(tname(m.b))}</b></div></div>`;
+  if(m.status==="scheduled")return`<div class="board">${meta}${vs}<div class="small" style="color:var(--board-muted);text-align:center">${m.when?esc(fmtWhen(m.when)):"Toss not done yet."}</div></div>`;
   if(!m.inn.length){
     const done=m.status==="done";
     return`<div class="board">${meta}${vs}${done?`<div class="result">${esc(m.result)}</div>`:`<div class="small" style="color:var(--board-muted);text-align:center">${esc(tname(m.toss))} won the toss and chose to ${m.chose==="bat"?"bat":"bowl"}. Openers coming out.</div>`}</div>`;
   }
   const i=m.inn.length-1,inn=m.inn[i],st=innStats(inn),tg=targetOf(m),ov=ovFor(m,i);
   const s1=m.inn.length>1?innStats(m.inn[0]):null;
-  const line=(tid,sc,ovs_,on)=>`<div class="tm${on?" on":""}">${badge(tid,40)}<div class="tmn"><b>${esc(tname(tid))}</b>${sc!==null?`<span>${sc}<small> (${ovs_})</small></span>`:`<span class="muted small">yet to bat</span>`}</div></div>`;
+  const line=(tid,sc,ovs_,on)=>`<div class="tm${on?" on":""}" data-act="team" data-id="${tid}">${badge(tid,40)}<div class="tmn"><b>${esc(tname(tid))}</b>${sc!==null?`<span>${sc}<small> (${ovs_})</small></span>`:`<span class="muted small">yet to bat</span>`}</div></div>`;
   const first=m.inn[0].bat,second=first===m.a?m.b:m.a;
   const strip=`<div class="teams">${line(first,m.inn.length>1?s1.runs+"/"+s1.wk:st.runs+"/"+st.wk,m.inn.length>1?ovs(s1.legal):ovs(st.legal),m.inn.length===1)}${line(second,m.inn.length>1?st.runs+"/"+st.wk:null,m.inn.length>1?ovs(st.legal):"",m.inn.length>1)}</div>`;
   let chase="";
-  if(m.status==="done"||m.status==="super")chase=`<div class="result">${esc(m.result)}</div>`;
+  if(m.status==="done"||m.status==="super"){const mv=m.status==="done"?matchMvp(m):null;chase=`<div class="result">${esc(m.result)}</div>${mv?`<div class="pom">${badge(pteam(mv.id),28)}<span><small>Player of the match</small><b>${esc(pname(mv.id))}</b></span><span class="pts">${mv.pts} pts</span></div>`:""}`}
   else if(m.status==="break")chase=`<div class="chase">${esc(tname(inn.bowl))} need ${st.runs+1} to win off ${ovFor(m,1)} overs</div>`;
   else if(tg){const need=tg-st.runs,left=ov*6-st.legal;chase=`<div class="chase">${esc(tname(inn.bat))} need ${need} run${need===1?"":"s"} from ${left} ball${left===1?"":"s"}</div>`}
   const rates=m.status==="live"?`<div class="rates"><span>Run rate <b>${rate(st.runs,st.legal)}</b></span>${tg?`<span>Required <b>${rate(tg-st.runs,ov*6-st.legal)}</b></span><span>Target <b>${tg}</b>${m.tgt?" (revised)":""}</span>`:""}</div>`:"";
@@ -410,18 +451,29 @@ function cardHtml(m,i,open){
   <div class="tbl"><table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>Econ</th><th>Wd/Nb</th></tr></thead><tbody>${bowl||`<tr><td colspan="6" class="muted">—</td></tr>`}</tbody></table></div>
   </div></details>`;
 }
+function shareText(m){
+  const s=i=>{const x=innStats(m.inn[i]);return`${tname(m.inn[i].bat)} ${x.runs}/${x.wk} (${ovs(x.legal)})`};
+  const lines=[`*${(T?.name||DEF.name).replace(/\s*\(DEMO\)/i,"")}* · ${stageLabel(m)}`];
+  if(m.inn?.length){lines.push(s(0));if(m.inn[1])lines.push(s(1))}
+  if(m.result)lines.push(`*${m.result}*`);
+  const mv=m.status==="done"?matchMvp(m):null;if(mv)lines.push(`Player of the match: ${pname(mv.id)}`);
+  if(m.status==="live"){const i=m.inn.length-1,st=innStats(m.inn[i]);const tg=targetOf(m);if(tg)lines.push(`Need ${tg-st.runs} from ${ovFor(m,i)*6-st.legal} balls`)}
+  if(typeof location!=="undefined"&&location.origin)lines.push(location.origin+location.pathname);return lines.join("\n");
+}
+function shareBtn(m){return`<a class="btn sm wa" href="https://wa.me/?text=${encodeURIComponent(shareText(m))}" target="_blank" rel="noopener">Share on WhatsApp</a>`}
 function matchDetail(m){
-  return`${boardHtml(m)}${pollHtml(m)}${feedHtml(m)}
+  return`${boardHtml(m)}<div class="row-btns">${shareBtn(m)}</div>${pollHtml(m)}${feedHtml(m)}
   ${m.inn.length?`<div class="label">Scorecard</div>`+m.inn.map((_,i)=>cardHtml(m,i,i===m.inn.length-1)).join(""):""}
   ${m.super?`<div class="kv"><b>Super Over:</b> ${esc(m.super)}</div>`:""}`;
 }
 const byNo=(a,b)=>(a.no||0)-(b.no||0);
 function champion(){const f=Object.values(M).find(m=>m.stage==="F"&&m.status==="done"&&m.winner&&m.winner!=="tie"&&m.winner!=="nr");return f?f.winner:null}
 function miniTable(g){const rows=pointsTable(g).slice(0,5);if(!rows.length||!rows.some(r=>r.p))return"";
-  return`<div class="mini"><div class="label">Group ${g}</div>${rows.map((r,i)=>`<div class="mr${i<3?" q":""}">${badge(r.id,22)}<span class="tn">${esc(tmeta(r.id).short)}</span><span class="muted">${r.p}</span><b>${r.pts}</b><span class="nrr">${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</span></div>`).join("")}</div>`}
-function topCards(){const{bat,bowl}=tourStats();const b=Object.entries(bat).sort((a,b)=>b[1].r-a[1].r)[0],w=Object.entries(bowl).sort((a,b)=>b[1].w-a[1].w||a[1].r-b[1].r)[0],sx=Object.entries(bat).sort((a,b)=>b[1].s-a[1].s)[0];
-  if(!b)return"";const card=(lab,id,val,unit)=>`<button class="tcard" data-act="tab" data-v="stats">${badge(pteam(id),30)}<span class="lab">${lab}</span><b>${esc(pname(id))}</b><span class="val">${val}<small> ${unit}</small></span></button>`;
-  return`<div class="label">Leading the tournament</div><div class="tcards">${card("Most runs",b[0],b[1].r,"runs")}${w?card("Most wickets",w[0],w[1].w,"wkts"):""}${sx&&sx[1].s?card("Most sixes",sx[0],sx[1].s,"sixes"):""}</div>`}
+  return`<div class="mini"><div class="label">Group ${g}</div>${rows.map((r,i)=>`<div class="mr${i<3?" q":""}" data-act="team" data-id="${r.id}">${badge(r.id,22)}<span class="tn">${esc(tmeta(r.id).short)}</span><span class="muted">${r.p}</span><b>${r.pts}</b><span class="nrr">${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</span></div>`).join("")}</div>`}
+function topCards(){const{bat,bowl}=tourStats();const b=Object.entries(bat).sort((a,b)=>b[1].r-a[1].r)[0],w=Object.entries(bowl).sort((a,b)=>b[1].w-a[1].w||a[1].r-b[1].r)[0];
+  const mv=mvpTable()[0],em=mvpTable(id=>{const g=pAge(id);return g&&g<=(T.emergingAge||DEF.emergingAge)})[0];
+  if(!b)return"";const card=(lab,id,val,unit,stat)=>`<button class="tcard" data-act="statTab" data-v="${stat}">${badge(pteam(id),30)}<span class="lab">${lab}</span><b>${esc(pname(id))}</b><span class="val">${val}<small> ${unit}</small></span></button>`;
+  return`<div class="label">Leading the tournament</div><div class="tcards">${mv?card("MVP",mv.id,mv.pts,"pts","mvp"):""}${em?card("Emerging player",em.id,em.pts,"pts","emerging"):""}${card("Most runs",b[0],b[1].r,"runs","runs")}${w?card("Most wickets",w[0],w[1].w,"wkts","wkts"):""}</div>`}
 function liveView(){
   if(!T)return`<section><div class="empty"><strong>Scores start on 29 November</strong>${canScore?"Open Setup to add the ten teams and their squads.":"Live scores, scorecards, the points table and player stats appear here once the tournament begins."}</div></section>`;
   const list=Object.values(M);
@@ -432,11 +484,11 @@ function liveView(){
     return`<section>${ui.sel&&!live.includes(m)?`<button class="btn sm" data-act="unsel">← Back</button>`:""}${matchDetail(m)}
     ${others.length?`<div class="row-btns">${others.map(o=>`<button class="btn sm" data-act="view" data-id="${o.id}">Also live: ${esc(tname(o.a))} v ${esc(tname(o.b))}</button>`).join("")}</div>`:""}</section>`;
   }
-  const next=list.filter(x=>x.status==="scheduled").sort(byNo)[0];
+  const next=list.filter(x=>x.status==="scheduled").sort((x,y)=>(x.when||"9")<(y.when||"9")?-1:(x.when||"9")>(y.when||"9")?1:byNo(x,y))[0];
   const done=list.filter(x=>x.status==="done").sort((a,b)=>(b.upd||0)-(a.upd||0)||(b.no||0)-(a.no||0));
   const champ=champion();
   if(!next&&!done.length)return`<section>${miniTable("A")?"":""}<div class="empty"><strong>No match in progress</strong>${canScore?"Open Score to start a match.":"The next match will show here live, ball by ball."}</div></section>`;
-  const hero=champ?`<div class="board champ"><div class="meta"><span class="pill done">Champions</span><span>${esc(STAGES.F)}</span></div><div class="champ-in">${badge(champ,84)}<div><div class="champ-name">${esc(tname(champ))}</div><div class="small" style="color:var(--board-muted)">${esc(done.find(x=>x.stage==="F")?.result||"")}</div></div></div><button class="btn sm ghost" data-act="view" data-id="${done.find(x=>x.stage==="F")?.id}">Final scorecard</button></div>`
+  const hero=champ?`<div class="board champ"><div class="meta"><span class="pill done">Champions</span><span>${esc(STAGES.F)}</span></div><div class="champ-in" data-act="team" data-id="${champ}">${badge(champ,84)}<div><div class="champ-name">${esc(tname(champ))}</div><div class="small" style="color:var(--board-muted)">${esc(done.find(x=>x.stage==="F")?.result||"")}</div></div></div><button class="btn sm ghost" data-act="view" data-id="${done.find(x=>x.stage==="F")?.id}">Final scorecard</button></div>`
     :next?`<div class="label">Next match</div>${boardHtml(next)}${pollHtml(next)}`:"";
   const recent=done.slice(0,champ?2:3);
   return`<section>${hero}
@@ -449,7 +501,7 @@ function matchRow(m){
   const sc=id=>{const i=m.inn.findIndex(x=>x.bat===id);if(i<0)return"";const s=innStats(m.inn[i]);return`${s.runs}/${s.wk} (${ovs(s.legal)})`};
   const first=m.inn[0]?.bat||m.a,second=first===m.a?m.b:m.a;
   const win=m.winner&&m.winner!=="tie"&&m.winner!=="nr"?m.winner:null;
-  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first)}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second)}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
+  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}${m.when&&m.status==="scheduled"?` · ${esc(fmtTime(m.when))}`:""}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first)}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second)}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
 }
 function matchesView(){
   if(!T)return liveView();
@@ -457,24 +509,37 @@ function matchesView(){
   if(!list.length)return`<section><div class="empty"><strong>Fixtures not out yet</strong>League fixtures appear here once the teams are set.</div></section>`;
   const ko=list.filter(m=>!isLeague(m)),lg=list.filter(isLeague),live=list.filter(m=>LIVE.includes(m.status));
   const block=(title,arr)=>arr.length?`<h2>${title}</h2><div class="mlist">${arr.map(matchRow).join("")}</div>`:"";
-  return`<section>${block("Live now",live)}${block("Knockouts",ko.filter(m=>!live.includes(m)))}${block("Upcoming",lg.filter(m=>m.status==="scheduled"))}${block("Results",lg.filter(m=>m.status==="done").reverse())}</section>`;
+  const up=list.filter(m=>m.status==="scheduled"&&!live.includes(m)).sort((x,y)=>(x.when||"9")<(y.when||"9")?-1:(x.when||"9")>(y.when||"9")?1:byNo(x,y));
+  const days={};up.forEach(m=>{const k=m.when?m.when.slice(0,10):"tba";(days[k]||(days[k]=[])).push(m)});
+  const upBlocks=Object.entries(days).map(([k,arr])=>block(k==="tba"?"Upcoming · date to be announced":fmtDay(arr[0].when),arr)).join("");
+  const results=list.filter(m=>m.status==="done").sort((x,y)=>byNo(y,x));
+  return`<section>${block("Live now",live)}${upBlocks}${block("Results",results)}</section>`;
 }
 function groupTable(g){
   const rows=pointsTable(g);if(!rows.length)return"";
   const tnr=rows.some(r=>r.t||r.nr);
-  return`<h2>Group ${g}</h2><div class="tbl"><table class="pts"><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th>${tnr?"<th>T/NR</th>":""}<th>Pts</th><th>NRR</th></tr></thead><tbody>${rows.map((r,i)=>`<tr${i<3&&r.p?' class="q"':""}><td class="n"><span class="tl">${badge(r.id,24)}<span class="tn"><b>${esc(tname(r.id))}</b></span></span>${r.p&&i===0?'<span class="tag">SF</span>':r.p&&i<3?'<span class="tag">QF</span>':""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td>${tnr?`<td>${r.t+r.nr||""}</td>`:""}<td><b>${r.pts}</b></td><td>${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
+  return`<h2>Group ${g}</h2><div class="tbl"><table class="pts"><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th>${tnr?"<th>T/NR</th>":""}<th>Pts</th><th>NRR</th></tr></thead><tbody>${rows.map((r,i)=>`<tr${i<3&&r.p?' class="q"':""}><td class="n"><span class="tl" data-act="team" data-id="${r.id}">${badge(r.id,24)}<span class="tn"><b>${esc(tname(r.id))}</b></span></span>${r.p&&i===0?'<span class="tag">SF</span>':r.p&&i<3?'<span class="tag">QF</span>':""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td>${tnr?`<td>${r.t+r.nr||""}</td>`:""}<td><b>${r.pts}</b></td><td>${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function tableView(){
   if(!T)return liveView();
   return`<section>${groupTable("A")}${groupTable("B")}<p class="kv">Win ${T.ptsWin} pts · tie or no result ${T.ptsTie} pt each. Group toppers go straight to the semi-finals; 2nd and 3rd play the quarter-finals (A2 v B3, B2 v A3). Teams level on points are split by net run rate, where an all-out side counts its full overs.</p></section>`;
 }
+function podium(rows,lab){
+  if(!rows.length)return"";const top=rows.slice(0,3);const order=[top[1],top[0],top[2]].filter(Boolean);
+  return`<div class="podium">${order.map(r=>{const rank=rows.indexOf(r)+1;return`<div class="pod r${rank}">${badge(pteam(r.id),rank===1?56:44)}<span class="rk">${rank===1?"🏆":"#"+rank}</span><b>${esc(pname(r.id))}</b><span class="muted small">${esc(tmeta(pteam(r.id)).short)}${pAge(r.id)?" · "+pAge(r.id)+" yrs":""}</span><span class="val">${r.pts}<small> ${lab}</small></span></div>`}).join("")}</div>`;
+}
 function statsView(){
   if(!T)return liveView();
   const{bat,bowl}=tourStats();
-  const chips=[["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
-  const nm=id=>`<td class="n"><span class="tl">${badge(pteam(id),24)}<span class="tn"><b>${esc(pname(id))}</b><span class="how">${esc(tmeta(pteam(id)).short)}</span></span></span></td>`;
-  let body="";
-  if(ui.stat==="wkts"){
+  const chips=[["mvp","MVP"],["emerging","Emerging"],["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
+  const nm=id=>`<td class="n"><span class="tl">${badge(pteam(id),24)}<span class="tn"><b>${esc(pname(id))}</b><span class="how">${esc(tmeta(pteam(id)).short)}${pAge(id)?" · "+pAge(id):""}</span></span></span></td>`;
+  let body="",head="",note="";
+  if(ui.stat==="mvp"||ui.stat==="emerging"){
+    const em=ui.stat==="emerging";const rows=mvpTable(em?id=>{const g=pAge(id);return g&&g<=(T.emergingAge||DEF.emergingAge)}:null);
+    head=podium(rows,"pts");
+    body=rows.length?`<table><thead><tr><th>#</th><th>Player</th><th>Pts</th><th>M</th><th>R</th><th>W</th><th>Ct</th></tr></thead><tbody>${rows.slice(0,25).map((r,i)=>`<tr${i<3?' class="q"':""}><td style="text-align:left">${i+1}</td>${nm(r.id)}<td><b>${r.pts}</b></td><td>${r.m}</td><td>${r.r}</td><td>${r.w}</td><td>${r.f}</td></tr>`).join("")}</tbody></table>`:"";
+    note=em?`Emerging player: aged ${T.emergingAge||DEF.emergingAge} or under at registration, ranked by MVP points.`:"MVP points: run 1, four +1, six +2, 30 runs +4, 50 runs +8, duck −2, wicket 25, 3-wicket haul +8, catch/stumping/run-out 8, dot ball 1, maiden 12.";
+  }else if(ui.stat==="wkts"){
     const rows=Object.entries(bowl).filter(([,x])=>x.l>0).sort((a,b)=>b[1].w-a[1].w||(a[1].r*6/a[1].l)-(b[1].r*6/b[1].l)).slice(0,20);
     body=rows.length?`<table><thead><tr><th>Bowler</th><th>W</th><th>O</th><th>R</th><th>Econ</th><th>Best</th></tr></thead><tbody>${rows.map(([id,x])=>`<tr>${nm(id)}<td><b>${x.w}</b></td><td>${ovs(x.l)}</td><td>${x.r}</td><td>${rate(x.r,x.l)}</td><td>${x.bw}/${x.br}</td></tr>`).join("")}</tbody></table>`:"";
   }else{
@@ -482,7 +547,21 @@ function statsView(){
     const rows=Object.entries(bat).filter(([,x])=>x.b>0||x.r>0).sort((a,b)=>b[1][key]-a[1][key]||b[1].r-a[1].r||a[1].b-b[1].b).slice(0,20);
     body=rows.length?`<table><thead><tr><th>Batter</th>${key==="s"?"<th>6s</th><th>R</th>":"<th>R</th><th>6s</th>"}<th>Inn</th><th>HS</th><th>SR</th><th>4s</th></tr></thead><tbody>${rows.map(([id,x])=>`<tr>${nm(id)}${key==="s"?`<td><b>${x.s}</b></td><td>${x.r}</td>`:`<td><b>${x.r}</b></td><td>${x.s}</td>`}<td>${x.inns}</td><td>${x.hs}${x.hsNo?"*":""}</td><td>${x.b?(x.r*100/x.b).toFixed(0):"–"}</td><td>${x.f}</td></tr>`).join("")}</tbody></table>`:"";
   }
-  return`<section><h2>Player stats</h2><div class="opts">${chips}</div>${body?`<div class="tbl">${body}</div>`:`<div class="empty"><strong>No stats yet</strong>Leaders appear after the first ball is bowled.</div>`}<p class="kv">Across all matches including knockouts. Updates live.</p></section>`;
+  return`<section><h2>Player stats</h2><div class="opts">${chips}</div>${head}${body?`<div class="tbl">${body}</div>`:`<div class="empty"><strong>No stats yet</strong>Leaders appear after the first ball is bowled.</div>`}<p class="kv">${note||"Across all matches including knockouts. Updates live."}</p></section>`;
+}
+function teamView(){
+  const id=ui.teamId,t=teamOf(id);if(!t)return liveView();
+  const me=tmeta(id);const list=Object.values(M).filter(m=>m.a===id||m.b===id).sort(byNo);
+  const played=list.filter(m=>m.status==="done"),up=list.filter(m=>m.status!=="done");
+  const row=pointsTable(t.group).find(r=>r.id===id);const pos=pointsTable(t.group).findIndex(r=>r.id===id)+1;
+  const{bat,bowl}=tourStats();const pts=fantasyPoints();
+  const squad=t.players.map(p=>({p,r:bat[p.id]?.r||0,b:bat[p.id]?.b||0,w:bowl[p.id]?.w||0,o:bowl[p.id]?.l||0,pts:pts[p.id]||0})).sort((x,y)=>y.pts-x.pts||y.r-x.r);
+  const icon=PRESET.find(x=>x.name===t.name.trim().toUpperCase())?.icon;
+  return`<section><button class="btn sm" data-act="tab" data-v="live">← Back</button>
+  <div class="board" style="background:linear-gradient(160deg,${me.color} -40%,var(--board) 55%)"><div class="teamhero">${badge(id,96)}<div><div class="champ-name">${esc(t.name)}</div><div class="small" style="color:var(--board-muted)">Group ${t.group}${icon?` · Icon: ${esc(icon)}`:""}</div>${row&&row.p?`<div class="rates"><span>Position <b>#${pos}</b></span><span>Played <b>${row.p}</b></span><span>Won <b>${row.w}</b></span><span>Pts <b>${row.pts}</b></span><span>NRR <b>${(row.nrr>=0?"+":"")+row.nrr.toFixed(2)}</b></span></div>`:""}</div></div></div>
+  ${up.length?`<h2>Fixtures</h2><div class="mlist">${up.map(matchRow).join("")}</div>`:""}
+  ${played.length?`<h2>Results</h2><div class="mlist">${played.slice().reverse().map(matchRow).join("")}</div>`:""}
+  <h2>Squad</h2><div class="tbl"><table><thead><tr><th>Player</th><th>Role</th><th>R</th><th>W</th><th>MVP</th></tr></thead><tbody>${squad.map(x=>`<tr><td class="n"><b>${esc(x.p.name)}</b>${x.p.age?`<span class="how">${x.p.age} yrs</span>`:""}</td><td>${esc(x.p.role||"")}</td><td>${x.r}${x.b?`<span class="muted small"> (${x.b})</span>`:""}</td><td>${x.w}${x.o?`<span class="muted small"> (${ovs(x.o)})</span>`:""}</td><td><b>${x.pts}</b></td></tr>`).join("")}</tbody></table></div></section>`;
 }
 function loginView(){
   if(canScore){ui.tab="score";return scoreView()}
@@ -511,7 +590,7 @@ function scoreView(){
   return`<section>${confirmHtml()}
   ${active.length?`<div class="label">In progress</div><div class="row-btns">${active.map(b).join("")}</div>`:""}
   ${next.length?`<div class="label">Next up</div><div class="row-btns">${next.map(b).join("")}</div>`:""}
-  <div class="row-btns"><button class="btn sm${ui.scoreSel==="new"?" pri":""}" data-act="newMatch">+ New match</button>${sel&&sel.status==="done"?b(sel):""}</div>
+  <div class="row-btns"><button class="btn sm${ui.scoreSel==="new"?" pri":""}" data-act="newMatch">+ New match</button>${list.some(m=>m.status==="done")?`<select id="done-sel" data-donesel="1" aria-label="Completed matches" style="width:auto;flex:1;min-width:160px"><option value="">Completed matches…</option>${list.filter(m=>m.status==="done").map(m=>`<option value="${m.id}"${ui.scoreSel===m.id?" selected":""}>${isLeague(m)?"M"+m.no:esc(m.stage)}: ${esc(tmeta(m.a).short)} v ${esc(tmeta(m.b).short)}</option>`).join("")}</select>`:""}</div>
   ${body}</section>`;
 }
 function suggest(stage){
@@ -571,11 +650,11 @@ function otherResultHtml(m){
 function padHtml(m){
   const head=`<div class="row-btns" style="justify-content:space-between;align-items:center"><span class="label">${esc(stageLabel(m))}</span><button class="btn sm" data-act="view" data-id="${m.id}">Audience view</button></div>`;
   if(m.status==="scheduled")return head+boardHtml(m)+tossHtml(m)+otherResultHtml(m);
-  if(m.status==="setup"||m.status==="break")return head+boardHtml(m)+openersHtml(m)+(m.status==="break"?`<button class="btn" data-act="undo">Undo last ball of 1st innings</button>`:`<button class="btn" data-act="redoToss">Redo toss</button>`)+otherResultHtml(m);
+  if(m.status==="setup"||m.status==="break")return head+boardHtml(m)+sheetHtml(m)+openersHtml(m)+(m.status==="break"?`<div class="row-btns"><button class="btn" data-act="undo">Undo last ball of 1st innings</button><button class="btn" data-act="sheet" data-k="fix">Fix an earlier ball</button></div>`:`<button class="btn" data-act="redoToss">Redo toss</button>`)+otherResultHtml(m);
   if(m.status==="super")return head+boardHtml(m)+`<div class="panel"><h2>Super Over result</h2><p class="kv">Each side nominates 3 batters and 1 bowler. The team batting second bats first.</p>
     <div class="field"><label class="label" for="so-score">Super Over scores (shown to everyone)</label><input id="so-score" placeholder="e.g. ${esc(tname(m.inn[1].bat))} 11/1, ${esc(tname(m.inn[0].bat))} 9/2"></div>
     <div class="row-btns"><button class="btn pri" data-act="superWin" data-w="${m.a}">${esc(tname(m.a))} won</button><button class="btn pri" data-act="superWin" data-w="${m.b}">${esc(tname(m.b))} won</button></div><button class="btn" data-act="undo">Undo last ball</button></div>`;
-  if(m.status==="done")return head+boardHtml(m)+`<button class="btn" data-act="undo">Undo and reopen</button>`;
+  if(m.status==="done")return head+boardHtml(m)+sheetHtml(m)+`<div class="row-btns"><button class="btn" data-act="undo">Undo and reopen</button><button class="btn" data-act="sheet" data-k="fix">Fix an earlier ball</button></div>`;
   const i=m.inn.length-1,inn=m.inn[i],c=inn.cur,avail=availBatters(m,inn);
   let need="";
   if(c.s==null||(c.ns==null&&avail.length)){
@@ -594,12 +673,35 @@ function padHtml(m){
   <button class="k ex" data-act="sheet" data-k="bye">Bye</button>${T.noLegBye?`<button class="k tool" data-act="run" data-r="5">5</button>`:`<button class="k ex" data-act="sheet" data-k="lb">Leg bye</button>`}
   <button class="k wk" data-act="sheet" data-k="w">OUT</button>
   <button class="k tool" data-act="undo">Undo</button><button class="k tool" data-act="swap"${c.ns?"":" disabled"}>Swap strike</button>
-  <button class="k tool" data-act="changeBowler">Change bowler</button><button class="k tool" data-act="endInn">End innings</button></div>`+otherResultHtml(m);
+  <button class="k tool" data-act="changeBowler">Change bowler</button><button class="k tool" data-act="endInn">End innings</button><button class="k tool" data-act="sheet" data-k="fix" style="grid-column:span 2">Fix an earlier ball</button></div>`+otherResultHtml(m);
+}
+function fixSheet(m,s,close){
+  const ii=s.ii??m.inn.length-1,inn=m.inn[ii];if(!inn||!inn.balls.length)return`<div class="sheet"><div class="label">Fix an earlier ball</div><p class="kv">No balls bowled yet.</p>${close}</div>`;
+  const st=innStats(inn);
+  if(s.idx==null){
+    const rows=st.log.slice(-18).reverse();
+    return`<div class="sheet"><div class="label">Fix an earlier ball · tap the ball</div>${m.inn.length>1?`<div class="opts">${m.inn.map((x,i)=>`<button class="opt" data-act="fixInn" data-v="${i}" aria-pressed="${i===ii}">${esc(tmeta(x.bat).short)} innings</button>`).join("")}</div>`:""}
+    <div class="feed">${rows.map(e=>{const idx=inn.balls.indexOf(e.b);return`<button class="row fixrow" data-act="fixPick" data-v="${idx}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></button>`}).join("")}</div>${close}</div>`;
+  }
+  const b=inn.balls[s.idx],d=s.d;const bp=xiPlayers(m,inn.bat),wp=xiPlayers(m,inn.bowl);
+  const sel=(id,items,lab,v,blank)=>`<div class="field"><label class="label" for="${id}">${lab}</label><select id="${id}" data-fix="${id.slice(3)}">${blank?`<option value="">—</option>`:""}${items.map(p=>`<option value="${p.id}"${p.id===v?" selected":""}>${esc(p.name)}</option>`).join("")}</select></div>`;
+  return`<div class="sheet"><div class="label">Fixing ball ${st.log[s.idx].lab} · ${esc(pname(b.bw))} to ${esc(pname(b.s))}</div>
+  <div class="grid2">${sel("fx-s",bp,"Striker",d.s)}${sel("fx-ns",bp,"Non-striker",d.ns)}</div>
+  <label class="check"><input type="checkbox" data-fix="batLater"${d.batLater?" checked":""}> Also apply the batter change to every later ball this innings (use when the wrong batter was picked)</label>
+  ${sel("fx-bw",wp,"Bowler",d.bw)}
+  <label class="check"><input type="checkbox" data-fix="bwOver"${d.bwOver?" checked":""}> Apply the bowler change to the whole over</label>
+  <div class="grid2"><div class="field"><label class="label" for="fx-t">Delivery</label><select id="fx-t" data-fix="t">${[["run","Legal"],["wd","Wide"],["nb","No ball"],["bye","Bye"]].map(([v,l])=>`<option value="${v}"${d.t===v?" selected":""}>${l}</option>`).join("")}</select></div>
+  <div class="field"><label class="label" for="fx-r">Runs</label><select id="fx-r" data-fix="r">${[0,1,2,3,4,5,6].map(r=>`<option${d.r===r?" selected":""}>${r}</option>`).join("")}</select></div></div>
+  <div class="field"><label class="label" for="fx-wk">Wicket</label><select id="fx-wk" data-fix="wk"><option value="">No wicket</option>${KINDS.filter(k=>!(T.noLbw&&k[0]==="lbw")).map(([k,l])=>`<option value="${k}"${d.wk===k?" selected":""}>${l}</option>`).join("")}</select></div>
+  ${d.wk?`<div class="grid2">${sel("fx-out",bp,"Who is out",d.out)}${sel("fx-f",wp,"Fielder",d.f,true)}</div>`:""}
+  <p class="kv">Totals, scorecards and fantasy points recalculate from the balls, so this fixes everything downstream.</p>
+  <div class="row-btns"><button class="btn pri" data-act="fixSave">Save fix</button><button class="btn" data-act="fixBack">Back to list</button>${close}</div></div>`;
 }
 function sheetHtml(m){
   const s=ui.sheet;if(!s)return"";
-  const inn=last(m.inn),c=inn.cur,fh=isFreeHit(inn);
   const close=`<button class="btn sm" data-act="closeSheet">Cancel</button>`;
+  if(s.k==="fix")return fixSheet(m,s,close);
+  const inn=last(m.inn),c=inn.cur,fh=isFreeHit(inn);
   if(s.k==="wd")return`<div class="sheet"><div class="label">Wide · runs taken besides the wide</div><div class="opts">${[0,1,2,3,4].map(r=>`<button class="opt" data-act="ext" data-r="${r}">${r===0?"Wide only":"+"+r}</button>`).join("")}</div>${close}</div>`;
   if(s.k==="nb")return`<div class="sheet"><div class="label">No ball · runs off the bat (next ball is a free hit)</div><div class="opts">${[0,1,2,3,4,6].map(r=>`<button class="opt" data-act="ext" data-r="${r}">${r===0?"No ball only":"+"+r}</button>`).join("")}</div>${close}</div>`;
   if(s.k==="bye"||s.k==="lb")return`<div class="sheet"><div class="label">${s.k==="bye"?"Byes":"Leg byes"}</div><div class="opts">${[1,2,3,4].map(r=>`<button class="opt" data-act="ext" data-r="${r}">${r}</button>`).join("")}</div>${close}</div>`;
@@ -622,7 +724,7 @@ function sheetHtml(m){
 }
 
 /* ================= setup ================= */
-function poolPlayer(name){const p=POOL.find(x=>x.name.toLowerCase()===name.toLowerCase());return p?{id:uidGen("p"),name:p.name,reg:p.reg,role:p.role}:{id:uidGen("p"),name}}
+function poolPlayer(name){const p=POOL.find(x=>x.name.toLowerCase()===name.toLowerCase());return p?{id:uidGen("p"),name:p.name,reg:p.reg,role:p.role,age:p.age}:{id:uidGen("p"),name}}
 function blankTeams(){
   if(PRESET.length)return PRESET.map(t=>({id:uidGen("t"),name:t.name,group:t.group,players:[poolPlayer(t.icon)]}));
   const t=[];for(const g of["A","B"])for(let i=1;i<=5;i++)t.push({id:uidGen("t"),name:"",group:g,players:Array.from({length:DEF.squad},()=>({id:uidGen("p"),name:""}))});return t}
@@ -672,12 +774,25 @@ function setupView(){
   <button class="btn sm" data-act="addTeam">+ Add team</button></div>
   <div id="setup-msg"></div>
   <div class="row-btns"><button class="btn pri" data-act="saveSetup">Save teams</button>${T&&!league.length?`<button class="btn" data-act="fixtures">Create league fixtures</button>`:""}</div>
+  ${schedulePanel()}
   <div class="panel"><h2>Scorer PIN</h2><p class="kv">Anyone with the PIN can score. Change it after the tournament or if it leaks; other phones are logged out within an hour.</p>
   <div class="grid2"><div class="field"><label class="label" for="pin-cur">Current PIN</label><input id="pin-cur" type="password" inputmode="numeric" autocomplete="current-password"></div>
   <div class="field"><label class="label" for="pin-new">New PIN (6+ digits)</label><input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password"></div></div>
   <div class="row-btns"><button class="btn" data-act="changePin">Change PIN</button><button class="btn" data-act="logout">Log out of scoring</button></div></div>
 
   </section>`;
+}
+function schedulePanel(){
+  const list=Object.values(M).sort(byNo);if(!list.length)return"";
+  const sc=ui.sched||(ui.sched={d1:"2026-11-29",d2:"2026-12-06",d3:"2026-12-13",start:"08:00",mins:75});
+  const toLocal=w=>{if(!w)return"";const d=new Date(w);if(isNaN(d))return"";const p=n=>String(n).padStart(2,"0");return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`};
+  return`<details class="card"><summary><span>Match schedule</span><span class="muted small">${list.filter(m=>m.when).length} of ${list.length} dated</span></summary><div class="in">
+  <p class="kv">Fill the three match days and a start time, then <b>Auto-fill</b>: league matches 1–10 on day 1, 11–20 on day 2, knockouts on day 3, spaced by the minutes per match. Adjust any match below and <b>Save schedule</b>.</p>
+  <div class="grid2"><div class="field"><label class="label" for="sc-d1">Day 1</label><input id="sc-d1" type="date" value="${sc.d1}" data-sc="d1"></div><div class="field"><label class="label" for="sc-d2">Day 2</label><input id="sc-d2" type="date" value="${sc.d2}" data-sc="d2"></div><div class="field"><label class="label" for="sc-d3">Day 3 (knockouts)</label><input id="sc-d3" type="date" value="${sc.d3}" data-sc="d3"></div>
+  <div class="field"><label class="label" for="sc-start">First match starts</label><input id="sc-start" type="time" value="${sc.start}" data-sc="start"></div><div class="field"><label class="label" for="sc-mins">Minutes per match</label><input id="sc-mins" type="number" min="30" max="240" value="${sc.mins}" data-sc="mins"></div></div>
+  <button class="btn sm" data-act="schedAuto">Auto-fill</button>
+  <div class="schedlist">${list.map(m=>`<div class="prow"><span class="pn small"><b>${isLeague(m)?"M"+m.no:esc(m.stage)}</b> ${esc(tmeta(m.a).short)} v ${esc(tmeta(m.b).short)}</span><input type="datetime-local" value="${toLocal(ui.schedDraft?.[m.id]??m.when)}" data-when="${m.id}" aria-label="Date and time"></div>`).join("")}</div>
+  <button class="btn pri" data-act="schedSave">Save schedule</button><div id="sc-msg"></div></div></details>`;
 }
 function roundRobin(ids){
   const a=[...ids];if(a.length%2)a.push(null);const n=a.length,rounds=[];
@@ -693,7 +808,7 @@ function render(){
   if(fatal==="read"&&!loaded.m){app.innerHTML=`<section><div class="empty"><strong>Can't reach the scoreboard</strong>Check your connection and reload the page.</div></section>`;return}
   if(!loaded.t||!loaded.m){app.innerHTML=`<section><div class="empty"><strong>Loading scores…</strong>Connecting to the scoreboard.</div></section>`;return}
   if(!canScore&&(ui.tab==="score"||ui.tab==="setup"))ui.tab="live";
-  const v={matches:matchesView,table:tableView,stats:statsView,fantasy:fantasyView,score:scoreView,setup:setupView,login:loginView}[ui.tab]||liveView;
+  const v={matches:matchesView,table:tableView,stats:statsView,fantasy:fantasyView,team:teamView,score:scoreView,setup:setupView,login:loginView}[ui.tab]||liveView;
   app.innerHTML=v();
 }
 
@@ -730,9 +845,13 @@ const acts={
   tab:el=>{ui.tab=el.dataset.v;ui.sheet=null;pendingConfirm=null;ui.loginErr="";if(ui.tab==="setup")ui.draft=null;if(ui.tab==="live")ui.sel=null;
     try{history.replaceState(null,"",["live","matches","table","stats","fantasy"].includes(ui.tab)?"#"+ui.tab:location.pathname+location.search)}catch(e){}render();scrollTo(0,0)},
   view:el=>{ui.sel=el.dataset.id;ui.tab="live";render();scrollTo(0,0)},
+  team:el=>{ui.teamId=el.dataset.id;ui.tab="team";render();scrollTo(0,0)},
   unsel:()=>{ui.sel=null;render()},
   stat:el=>{ui.stat=el.dataset.v;render()},
-  fNew:()=>{FT.draft={name:"",p:[]};FT.q="";FT.err="";render()},
+  statTab:el=>{ui.stat=el.dataset.v;ui.tab="stats";render();scrollTo(0,0)},
+  fopen:el=>{ui.fopen=ui.fopen===el.dataset.id?null:el.dataset.id;render();const p=$(".pickpanel");if(p)p.scrollIntoView({block:"nearest"})},
+  fanSave:()=>{const v=($("#fan-name")?.value||"").trim();if(v.length<2){flash("Enter at least 2 characters.");return}FAN.name=v;try{localStorage.setItem("mc-fan",v)}catch(e){}if(uid&&db)setDoc(doc(db,"fans",uid),{name:v,uid},{merge:true}).catch(()=>{});render()},
+  fNew:()=>{FT.draft={name:FAN.name||"",p:[]};FT.q="";FT.err="";render()},
   fEdit:()=>{FT.draft={name:FT.mine.name,p:[...FT.mine.p]};FT.q="";FT.err="";render()},
   fCancel:()=>{FT.draft=null;render()},
   fTog:el=>{const d=FT.draft;const i=d.p.indexOf(el.dataset.id);if(i>=0)d.p.splice(i,1);else if(d.p.length<13)d.p.push(el.dataset.id);render()},
@@ -756,6 +875,22 @@ const acts={
   run:el=>addBall({t:"run",r:+el.dataset.r}),
   sheet:el=>{ui.sheet={k:el.dataset.k,kind:null,wt:"run",out:"s",runs:0,f:""};render()},
   closeSheet:()=>{ui.sheet=null;render()},
+  fixInn:el=>{ui.sheet.ii=+el.dataset.v;ui.sheet.idx=null;render()},
+  fixBack:()=>{ui.sheet.idx=null;render()},
+  fixPick:el=>{const m=M[ui.scoreSel],ii=ui.sheet.ii??m.inn.length-1,b=m.inn[ii].balls[+el.dataset.v];
+    ui.sheet.ii=ii;ui.sheet.idx=+el.dataset.v;ui.sheet.d={s:b.s,ns:b.ns,bw:b.bw,t:b.t,r:b.r,wk:b.w?.k||"",out:b.w?.out||b.s,f:b.w?.f||"",batLater:true,bwOver:true};render()},
+  fixSave:()=>{const m=curMatch(),s=ui.sheet,ii=s.ii,inn=m.inn[ii],idx=s.idx,d=s.d,old=inn.balls[idx];
+    const repl=(obj,from,to)=>{if(!from||from===to)return;["s","ns"].forEach(k=>{if(obj[k]===from)obj[k]=to});if(obj.w&&obj.w.out===from)obj.w.out=to};
+    // batter substitutions
+    [["s",old.s,d.s],["ns",old.ns,d.ns]].forEach(([k,from,to])=>{if(from===to)return;
+      if(d.batLater){for(let i=idx;i<inn.balls.length;i++)repl(inn.balls[i],from,to);repl(inn.cur,from,to);inn.open=(inn.open||[]).map(x=>x===from?to:x)}else{inn.balls[idx][k]=to}});
+    // bowler
+    if(old.bw!==d.bw){if(d.bwOver){const lab=innStats(inn).log[idx].lab.split(".")[0];innStats(inn).log.forEach((e,i)=>{if(e.lab.split(".")[0]===lab&&inn.balls[i].bw===old.bw)inn.balls[i].bw=d.bw});if(inn.cur.bw===old.bw)inn.cur.bw=d.bw}else inn.balls[idx].bw=d.bw}
+    const b=inn.balls[idx];b.t=d.t;b.r=+d.r;
+    if(d.wk){b.w={k:d.wk,out:d.out};if(d.f)b.w.f=d.f}else delete b.w;
+    // re-evaluate end state
+    if(ii===m.inn.length-1&&(m.status==="live"||m.status==="break"||m.status==="done")){const was=m.status;inn.closed=false;if(inn.manual){/* keep manual close */inn.closed=true}else{m.status="live";m.result="";m.winner=null;delete m.how;checkEnd(m);if(m.status==="live"&&was!=="live"&&!inn.manual){/* reopened: fine */}}}
+    ui.sheet=null;saveMatch(m);flash("Ball fixed and totals recalculated.",true)},
   ext:el=>addBall({t:ui.sheet.k,r:+el.dataset.r}),
   wk:el=>{ui.sheet.kind=el.dataset.v;if(el.dataset.v!=="ro"&&el.dataset.v!=="st")ui.sheet.wt="run";render()},
   wo:el=>{ui.sheet.out=el.dataset.v;render()},
@@ -799,13 +934,18 @@ const acts={
       b.players.forEach(n=>{if(have.has(n.toLowerCase()))return;const np=poolPlayer(n);const slot=t.players.find(p=>!p.name.trim());if(slot)Object.assign(slot,{name:np.name,reg:np.reg,role:np.role});else t.players.push(np);have.add(n.toLowerCase())});
     });
     render();flashAt("imp-msg",`${added} team${added===1?"":"s"} added, ${merged} updated. Check the groups, then Save teams.`,true)},
+  schedAuto:()=>{const sc=ui.sched;const list=Object.values(M).sort(byNo);const lg=list.filter(isLeague),ko=list.filter(m=>!isLeague(m));
+    const mk=(date,i)=>{const [h,mi]=sc.start.split(":").map(Number);const d=new Date(`${date}T00:00`);d.setMinutes(h*60+mi+i*(+sc.mins||75));return d.toISOString()};
+    ui.schedDraft={};lg.forEach((m,i)=>{ui.schedDraft[m.id]=i<10?mk(sc.d1,i):mk(sc.d2,i-10)});ko.forEach((m,i)=>ui.schedDraft[m.id]=mk(sc.d3,i));render()},
+  schedSave:async()=>{const d=ui.schedDraft||{};const b=writeBatch(db);let n=0;Object.values(M).forEach(m=>{const v=d[m.id];if(v!==undefined&&v!==(m.when||"")){const w=v?new Date(v).toISOString():null;const mm={...m};if(w)mm.when=w;else delete mm.when;M[m.id]=mm;b.set(doc(db,"matches",m.id),strip(mm));n++}});
+    try{await b.commit();ui.schedDraft=null;render();flashAt("sc-msg",`${n} match${n===1?"":"es"} updated.`,true)}catch(e){flashAt("sc-msg","Not saved. Check your connection.")}},
   addTeam:()=>{ui.draft.teams.push({id:uidGen("t"),name:"",group:"B",players:Array.from({length:DEF.squad},()=>({id:uidGen("p"),name:""}))});render()},
   delTeam:el=>{ui.draft.teams=ui.draft.teams.filter(t=>t.id!==el.dataset.id);render()},
   addPlayer:el=>{ui.draft.teams.find(t=>t.id===el.dataset.id).players.push({id:uidGen("p"),name:""});render()},
   delPlayer:el=>{const[tid,pid]=el.dataset.id.split(":");const t=ui.draft.teams.find(t=>t.id===tid);t.players=t.players.filter(p=>p.id!==pid);render()},
   saveSetup:()=>{const d=clone(ui.draft);d.name=(d.name||"").trim()||DEF.name;
     d.wideRuns=Math.max(0,parseInt(d.wideRuns,10)||0);d.nbRuns=Math.max(0,parseInt(d.nbRuns,10)||0);
-    d.teams=d.teams.map(t=>({id:t.id,name:(t.name||"").trim(),group:t.group,players:t.players.map(p=>{const o={id:p.id,name:(p.name||"").trim()};if(p.reg)o.reg=p.reg;if(p.role)o.role=p.role;return o}).filter(p=>p.name)})).filter(t=>t.name||t.players.length);
+    d.teams=d.teams.map(t=>({id:t.id,name:(t.name||"").trim(),group:t.group,players:t.players.map(p=>{const o={id:p.id,name:(p.name||"").trim()};if(p.reg)o.reg=p.reg;if(p.role)o.role=p.role;if(p.age)o.age=p.age;return o}).filter(p=>p.name)})).filter(t=>t.name||t.players.length);
     const short=d.teams.find(t=>t.players.length<DEF.minXi);
     const started=Object.values(M).some(m=>(m.inn||[]).length);
     const bad=d.teams.length<2?"Add at least two teams with names.":d.teams.find(t=>!t.name)?"Every team needs a name.":(short&&started)?`${short.name} needs at least ${DEF.minXi} players.`:"";
@@ -824,8 +964,8 @@ const acts={
   logout:()=>{signOut(auth);ui.tab="live";render()},
   reset:()=>ask("Delete the tournament, all teams, every match, all predictions and all fantasy teams? This cannot be undone.","Delete everything",async()=>{
     try{const batch=writeBatch(db);Object.keys(M).forEach(id=>{batch.delete(doc(db,"matches",id));batch.delete(doc(db,"polls",id))});batch.delete(doc(db,"tournament","main"));batch.delete(doc(db,"meta","lock"));
-      const fs=await getDocs(collection(db,"fantasy"));let b2=batch,n=0;const extra=[];
-      fs.docs.forEach(d=>{if(n++>=400){b2=writeBatch(db);extra.push(b2);n=1}b2.delete(d.ref)});
+      const fs=await getDocs(collection(db,"fantasy"));const fn=await getDocs(collection(db,"fans"));let b2=batch,n=0;const extra=[];
+      [...fs.docs,...fn.docs].forEach(d=>{if(n++>=400){b2=writeBatch(db);extra.push(b2);n=1}b2.delete(d.ref)});
       await batch.commit();for(const b of extra)await b.commit();
       fantasyLockWritten=false;M={};T=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;FT.all=null;FT.mine=null;render();flash("Everything deleted.",true)}
     catch(e){flash("Not fully deleted. Check your connection and try again.")}}),
@@ -870,6 +1010,9 @@ document.addEventListener("submit",async e=>{
 document.addEventListener("input",e=>{
   const t=e.target;
   if(t.dataset.fname&&FT.draft){FT.draft.name=t.value;return}
+  if(t.dataset.fanname)return;
+  if(t.dataset.sc&&ui.sched){ui.sched[t.dataset.sc]=t.value;return}
+  if(t.dataset.when){(ui.schedDraft||(ui.schedDraft={}))[t.dataset.when]=t.value;return}
   if(t.dataset.poolq){ui.poolQ=t.value;const sc=scrollY;render();const q=$("#pool-q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}scrollTo(0,sc);return}
   if(t.dataset.fq){FT.q=t.value;renderDeferred=false;const sc=scrollY;render();const q=$("#f-q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}scrollTo(0,sc);return}
   const d=ui.draft;if(!d)return;
@@ -881,15 +1024,17 @@ document.addEventListener("change",e=>{
   const t=e.target;
   if(t.dataset.pool&&ui.draft){const reg=+t.dataset.pool,d=ui.draft,P=POOL.find(x=>x.reg===reg);
     d.teams.forEach(x=>{x.players=x.players.filter(p=>!(p.reg===reg||(!p.reg&&p.name.trim().toLowerCase()===P.name.toLowerCase())))});
-    if(t.value){const tm=d.teams.find(x=>x.id===t.value);const slot=tm.players.find(p=>!p.name.trim());const np={id:slot?slot.id:uidGen("p"),name:P.name,reg:P.reg,role:P.role};if(slot)Object.assign(slot,np);else tm.players.push(np)}
+    if(t.value){const tm=d.teams.find(x=>x.id===t.value);const slot=tm.players.find(p=>!p.name.trim());const np={id:slot?slot.id:uidGen("p"),name:P.name,reg:P.reg,role:P.role,age:P.age};if(slot)Object.assign(slot,np);else tm.players.push(np)}
     const sc=scrollY;render();scrollTo(0,sc);return}
   if(t.dataset.poolall){ui.poolAll=t.checked;render();return}
+  if(t.dataset.donesel){if(t.value){ui.scoreSel=t.value;ui.sheet=null;ui.toss=null;pendingConfirm=null;try{sessionStorage.setItem("mc-score",t.value)}catch(e){}render()}return}
   if(t.dataset.tgroup&&ui.draft){ui.draft.teams.find(x=>x.id===t.dataset.tgroup).group=t.value;t.blur();render()}
   if(t.dataset.nm&&ui.nm){ui.nm[t.dataset.nm]=t.value;if(t.dataset.nm==="stage"){const[a,b]=suggest(t.value);if(a)ui.nm.a=a;if(b)ui.nm.b=b}t.blur();render()}
   if(t.dataset.tz&&ui.toss){ui.toss[t.dataset.tz]=t.value;t.blur();render()}
   if(t.dataset.xi&&ui.toss){const[team,pid]=t.dataset.xi.split(":");const arr=ui.toss.xi[team];
     if(t.checked){if(!arr.includes(pid))arr.push(pid)}else ui.toss.xi[team]=arr.filter(x=>x!==pid);t.blur();render()}
   if(t.id==="wk-f"&&ui.sheet)ui.sheet.f=t.value;
+  if(t.dataset.fix&&ui.sheet?.d){const k=t.dataset.fix;ui.sheet.d[k]=t.type==="checkbox"?t.checked:(k==="r"?+t.value:t.value);if(k==="wk"){t.blur();render()}}
   if(t.dataset.fpick&&FT.draft){const d=FT.draft,id=t.dataset.fpick;const i=d.p.indexOf(id);if(t.checked&&i<0&&d.p.length<13)d.p.push(id);else if(!t.checked&&i>=0)d.p.splice(i,1);const sc=scrollY;render();scrollTo(0,sc)}
 });
 

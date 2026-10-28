@@ -51,6 +51,13 @@ service cloud.firestore {
         && noBallBowled());
       allow delete: if isScorer();
     }
+    // Prediction-league names: each phone writes its own, everyone reads
+    match /fans/{fid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && fid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 30;
+      allow delete: if isScorer();
+    }
     match /meta/{docId} {
       allow read: if true;
       allow write: if isScorer();
