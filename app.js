@@ -34,7 +34,7 @@ const tname=id=>teamOf(id)?.name||"TBD";
 function pname(id){if(!id)return"—";for(const t of T?.teams||[]){const p=t.players.find(p=>p.id===id);if(p)return p.name}return"Player"}
 const PALETTE=["#6B21A8","#B91C1C","#0F766E","#111827","#C2410C","#B45309","#1D4ED8","#15803D","#BE185D","#0369A1"];
 function tmeta(id){const t=teamOf(id);if(!t)return{name:"TBD",color:"#64748B",logo:"",short:"TBD",initials:"?"};
-  const pre=PRESET.find(p=>p.name===t.name.trim().toUpperCase());const idx=(T.teams.indexOf(t)+10)%10;
+  const nm=t.name.trim().toUpperCase();const pre=PRESET.find(p=>p.name===nm)||PRESET.find(p=>p.name.split(" ")[0]===nm.split(" ")[0]);const idx=(T.teams.indexOf(t)+10)%10;
   const words=t.name.trim().split(/\s+/);const initials=(words.length>1?words[0][0]+words[words.length-1][0]:t.name.slice(0,2)).toUpperCase();
   return{name:t.name,color:pre?.color||PALETTE[idx],logo:pre?.logo?"logos/"+pre.logo:"",short:words[0].length>=5?words[0]:words.slice(0,2).join(" "),initials}}
 function badge(id,size){const m=tmeta(id);const sz=size||32;
@@ -556,7 +556,7 @@ function teamView(){
   const row=pointsTable(t.group).find(r=>r.id===id);const pos=pointsTable(t.group).findIndex(r=>r.id===id)+1;
   const{bat,bowl}=tourStats();const pts=fantasyPoints();
   const squad=t.players.map(p=>({p,r:bat[p.id]?.r||0,b:bat[p.id]?.b||0,w:bowl[p.id]?.w||0,o:bowl[p.id]?.l||0,pts:pts[p.id]||0})).sort((x,y)=>y.pts-x.pts||y.r-x.r);
-  const icon=PRESET.find(x=>x.name===t.name.trim().toUpperCase())?.icon;
+  const icon=(PRESET.find(x=>x.name===t.name.trim().toUpperCase())||PRESET.find(x=>x.name.split(" ")[0]===t.name.trim().toUpperCase().split(" ")[0]))?.icon;
   return`<section><button class="btn sm" data-act="tab" data-v="live">← Back</button>
   <div class="board" style="background:linear-gradient(160deg,${me.color} -40%,var(--board) 55%)"><div class="teamhero">${badge(id,96)}<div><div class="champ-name">${esc(t.name)}</div><div class="small" style="color:var(--board-muted)">Group ${t.group}${icon?` · Icon: ${esc(icon)}`:""}</div>${row&&row.p?`<div class="rates"><span>Position <b>#${pos}</b></span><span>Played <b>${row.p}</b></span><span>Won <b>${row.w}</b></span><span>Pts <b>${row.pts}</b></span><span>NRR <b>${(row.nrr>=0?"+":"")+row.nrr.toFixed(2)}</b></span></div>`:""}</div></div></div>
   ${up.length?`<h2>Fixtures</h2><div class="mlist">${up.map(matchRow).join("")}</div>`:""}
@@ -692,7 +692,9 @@ function fixSheet(m,s,close){
   <label class="check"><input type="checkbox" data-fix="bwOver"${d.bwOver?" checked":""}> Apply the bowler change to the whole over</label>
   <div class="grid2"><div class="field"><label class="label" for="fx-t">Delivery</label><select id="fx-t" data-fix="t">${[["run","Legal"],["wd","Wide"],["nb","No ball"],["bye","Bye"]].map(([v,l])=>`<option value="${v}"${d.t===v?" selected":""}>${l}</option>`).join("")}</select></div>
   <div class="field"><label class="label" for="fx-r">Runs</label><select id="fx-r" data-fix="r">${[0,1,2,3,4,5,6].map(r=>`<option${d.r===r?" selected":""}>${r}</option>`).join("")}</select></div></div>
-  <div class="field"><label class="label" for="fx-wk">Wicket</label><select id="fx-wk" data-fix="wk"><option value="">No wicket</option>${KINDS.filter(k=>!(T.noLbw&&k[0]==="lbw")).map(([k,l])=>`<option value="${k}"${d.wk===k?" selected":""}>${l}</option>`).join("")}</select></div>
+  ${(()=>{const prev=inn.balls[s.idx-1];const fh=T.freeHit&&prev&&(prev.t==="nb"||(prev.fh&&prev.t==="wd"));const allowed=d.t==="nb"||fh?["ro"]:d.t==="wd"?["ro","st"]:null;
+    const kinds=KINDS.filter(k=>!(T.noLbw&&k[0]==="lbw")).filter(k=>!allowed||allowed.includes(k[0]));
+    return`<div class="field"><label class="label" for="fx-wk">Wicket${allowed?` <span class="muted">(${d.t==="nb"?"no ball":fh?"free hit":"wide"}: ${allowed.map(x=>KINDS.find(k=>k[0]===x)[1].toLowerCase()).join(" or ")} only)</span>`:""}</label><select id="fx-wk" data-fix="wk"><option value="">No wicket</option>${kinds.map(([k,l])=>`<option value="${k}"${d.wk===k?" selected":""}>${l}</option>`).join("")}</select></div>`})()}
   ${d.wk?`<div class="grid2">${sel("fx-out",bp,"Who is out",d.out)}${sel("fx-f",wp,"Fielder",d.f,true)}</div>`:""}
   <p class="kv">Totals, scorecards and fantasy points recalculate from the balls, so this fixes everything downstream.</p>
   <div class="row-btns"><button class="btn pri" data-act="fixSave">Save fix</button><button class="btn" data-act="fixBack">Back to list</button>${close}</div></div>`;
@@ -880,6 +882,8 @@ const acts={
   fixPick:el=>{const m=M[ui.scoreSel],ii=ui.sheet.ii??m.inn.length-1,b=m.inn[ii].balls[+el.dataset.v];
     ui.sheet.ii=ii;ui.sheet.idx=+el.dataset.v;ui.sheet.d={s:b.s,ns:b.ns,bw:b.bw,t:b.t,r:b.r,wk:b.w?.k||"",out:b.w?.out||b.s,f:b.w?.f||"",batLater:true,bwOver:true};render()},
   fixSave:()=>{const m=curMatch(),s=ui.sheet,ii=s.ii,inn=m.inn[ii],idx=s.idx,d=s.d,old=inn.balls[idx];
+    {const prev=inn.balls[idx-1];const fh=T.freeHit&&prev&&(prev.t==="nb"||(prev.fh&&prev.t==="wd"));const ok=d.t==="nb"||fh?["ro"]:d.t==="wd"?["ro","st"]:null;
+      if(d.wk&&ok&&!ok.includes(d.wk)){flash(`A batter can only be ${ok.map(x=>KINDS.find(k=>k[0]===x)[1].toLowerCase()).join(" or ")} off that delivery.`);return}}
     const repl=(obj,from,to)=>{if(!from||from===to)return;["s","ns"].forEach(k=>{if(obj[k]===from)obj[k]=to});if(obj.w&&obj.w.out===from)obj.w.out=to};
     // batter substitutions
     [["s",old.s,d.s],["ns",old.ns,d.ns]].forEach(([k,from,to])=>{if(from===to)return;
@@ -888,6 +892,7 @@ const acts={
     if(old.bw!==d.bw){if(d.bwOver){const lab=innStats(inn).log[idx].lab.split(".")[0];innStats(inn).log.forEach((e,i)=>{if(e.lab.split(".")[0]===lab&&inn.balls[i].bw===old.bw)inn.balls[i].bw=d.bw});if(inn.cur.bw===old.bw)inn.cur.bw=d.bw}else inn.balls[idx].bw=d.bw}
     const b=inn.balls[idx];b.t=d.t;b.r=+d.r;
     if(d.wk){b.w={k:d.wk,out:d.out};if(d.f)b.w.f=d.f}else delete b.w;
+    inn.balls.forEach((x,i)=>{const p=inn.balls[i-1];const fh=T.freeHit&&p&&(p.t==="nb"||(p.fh&&p.t==="wd"));if(fh)x.fh=true;else delete x.fh});
     // re-evaluate end state
     if(ii===m.inn.length-1&&(m.status==="live"||m.status==="break"||m.status==="done")){const was=m.status;inn.closed=false;if(inn.manual){/* keep manual close */inn.closed=true}else{m.status="live";m.result="";m.winner=null;delete m.how;checkEnd(m);if(m.status==="live"&&was!=="live"&&!inn.manual){/* reopened: fine */}}}
     ui.sheet=null;saveMatch(m);flash("Ball fixed and totals recalculated.",true)},
@@ -1034,7 +1039,9 @@ document.addEventListener("change",e=>{
   if(t.dataset.xi&&ui.toss){const[team,pid]=t.dataset.xi.split(":");const arr=ui.toss.xi[team];
     if(t.checked){if(!arr.includes(pid))arr.push(pid)}else ui.toss.xi[team]=arr.filter(x=>x!==pid);t.blur();render()}
   if(t.id==="wk-f"&&ui.sheet)ui.sheet.f=t.value;
-  if(t.dataset.fix&&ui.sheet?.d){const k=t.dataset.fix;ui.sheet.d[k]=t.type==="checkbox"?t.checked:(k==="r"?+t.value:t.value);if(k==="wk"){t.blur();render()}}
+  if(t.dataset.fix&&ui.sheet?.d){const k=t.dataset.fix,d=ui.sheet.d;d[k]=t.type==="checkbox"?t.checked:(k==="r"?+t.value:t.value);
+    if(k==="t"){const ok=d.t==="nb"?["ro"]:d.t==="wd"?["ro","st"]:null;if(d.wk&&ok&&!ok.includes(d.wk))d.wk="";t.blur();render()}
+    if(k==="wk"){t.blur();render()}}
   if(t.dataset.fpick&&FT.draft){const d=FT.draft,id=t.dataset.fpick;const i=d.p.indexOf(id);if(t.checked&&i<0&&d.p.length<13)d.p.push(id);else if(!t.checked&&i>=0)d.p.splice(i,1);const sc=scrollY;render();scrollTo(0,sc)}
 });
 

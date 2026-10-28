@@ -1,22 +1,12 @@
 /* Layout: one column (max 680px). Poster palette: stadium navy board, gold numerals, sky-blue accents, pitch green. */
 :root{
-  --bg:#EAF4FB; --surface:#FFFFFF; --line:#C9DCEB; --ink:#0B1E3F; --muted:#4C6283;
+  --bg:#F4F5F7; --surface:#FFFFFF; --line:#DADEE5; --ink:#0B1E3F; --muted:#4C6283;
   --board:#0A1E4A; --board2:#123A8A; --board-ink:#F4F8FF; --board-muted:#9DB6E0; --gold:#F6C544; --gold2:#E39B1C;
   --four:#1E7BDB; --six:#7A3FC9; --out:#D6362B; --extra:#B8761A; --good:#1F8A4C; --green:#2E9E5B;
-  --chip:#DCEBF8; --focus:#1E7BDB; --q:#FFF3C4;
+  --chip:#E8EAEF; --focus:#1E7BDB; --q:#FFF3C4;
   --display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#07122B; --surface:#0E1E42; --line:#223A6B; --ink:#EAF1FF; --muted:#9DB0D3;
-  --board:#050F2A; --board2:#0F2E73; --board-ink:#F4F8FF; --board-muted:#8FA8D6; --gold:#F6C544; --gold2:#E39B1C;
-  --four:#6FB0F5; --six:#B995EC; --out:#F2786B; --extra:#E8B35A; --good:#6CD494; --green:#4FC27B;
-  --chip:#17305F; --focus:#9CC8F8; --q:#3A3010; color-scheme:dark }}
-:root[data-theme="dark"]{
-  --bg:#07122B; --surface:#0E1E42; --line:#223A6B; --ink:#EAF1FF; --muted:#9DB0D3;
-  --board:#050F2A; --board2:#0F2E73; --board-ink:#F4F8FF; --board-muted:#8FA8D6; --gold:#F6C544; --gold2:#E39B1C;
-  --four:#6FB0F5; --six:#B995EC; --out:#F2786B; --extra:#E8B35A; --good:#6CD494; --green:#4FC27B;
-  --chip:#17305F; --focus:#9CC8F8; --q:#3A3010; color-scheme:dark }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;font-variant-numeric:tabular-nums}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--board2)}
@@ -258,7 +248,7 @@ tr.exp{cursor:pointer}
 .pickgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 tr.sel td{background:var(--q)}
 .pk{display:flex;align-items:center;gap:6px;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 8px;min-width:0}
-.pk span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk>span:not(.badge){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pk b{font-family:var(--display);font-size:14px}
 
 /* quick fix */
@@ -273,3 +263,7 @@ tr.sel td{background:var(--q)}
 .schedlist{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:8px}
 .schedlist input{width:52%;flex:none}
 .sync{font-size:11px}
+
+:root{color-scheme:light}
+.pk>span:not(.badge){flex:1}
+.pk .badge{flex:none}
