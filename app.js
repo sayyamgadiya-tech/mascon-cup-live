@@ -4,6 +4,8 @@ import { initializeFirestore, getFirestore, persistentLocalCache, persistentMult
 
 /* ================= config ================= */
 const CFG = window.MASCON_CONFIG || {};
+const POOL = window.MASCON_POOL || [];
+const PRESET = window.MASCON_TEAMS || [];
 const DEF={name:"Ahore Mascon Cup 2026",overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
 const STAGES={A:"Group A",B:"Group B",QF1:"Quarter-final 1",QF2:"Quarter-final 2",SF1:"Semi-final 1",SF2:"Semi-final 2",F:"Final"};
 const isLeague=m=>m.stage==="A"||m.stage==="B";
@@ -189,7 +191,7 @@ function fantasyBoard(){
   const pts=fantasyPoints();
   return (FT.all||[]).map(t=>({...t,pts:(t.p||[]).reduce((a,id)=>a+(pts[id]||0),0)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name));
 }
-function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,team:t.name,tid:t.id})))}
+function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,role:p.role||"",team:t.name,tid:t.id})))}
 function fantasyView(){
   if(!T||!T.teams.length)return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div></section>`;
   loadFantasy();
@@ -220,7 +222,7 @@ function pickerHtml(){
   <div class="field"><label class="label" for="f-name">Your name (shown on the leaderboard)</label><input id="f-name" value="${esc(d.name)}" maxlength="30" placeholder="e.g. Rahul D" data-fname="1"></div>
   ${sel.size?`<div class="chips">${d.p.map(id=>{const p=allPlayers().find(x=>x.id===id);return`<button class="chip" data-act="fTog" data-id="${id}">${esc(p?.name||"?")} ✕</button>`}).join("")}</div>`:""}
   <input id="f-q" placeholder="Search player or team" value="${esc(FT.q)}" data-fq="1">
-  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label">${esc(team)}</div><div class="xi">${ps.map(p=>`<label class="${sel.has(p.id)?"on":""}${full&&!sel.has(p.id)?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${sel.has(p.id)?" checked":""}${full&&!sel.has(p.id)?" disabled":""}>${esc(p.name)}</label>`).join("")}</div>`).join("")}
+  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label">${esc(team)}</div><div class="xi">${ps.map(p=>`<label class="${sel.has(p.id)?"on":""}${full&&!sel.has(p.id)?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${sel.has(p.id)?" checked":""}${full&&!sel.has(p.id)?" disabled":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}</label>`).join("")}</div>`).join("")}
   ${FT.err?`<div class="msg" style="color:var(--out)">${esc(FT.err)}</div>`:""}
   <div class="row-btns"><button class="btn pri" data-act="fSave"${sel.size===13?"":" disabled"}>Save my team</button><button class="btn" data-act="fCancel">Cancel</button></div></div>`;
 }
@@ -569,13 +571,29 @@ function sheetHtml(m){
 }
 
 /* ================= setup ================= */
-function blankTeams(){const t=[];for(const g of["A","B"])for(let i=1;i<=5;i++)t.push({id:uidGen("t"),name:"",group:g,players:Array.from({length:DEF.squad},()=>({id:uidGen("p"),name:""}))});return t}
+function poolPlayer(name){const p=POOL.find(x=>x.name.toLowerCase()===name.toLowerCase());return p?{id:uidGen("p"),name:p.name,reg:p.reg,role:p.role}:{id:uidGen("p"),name}}
+function blankTeams(){
+  if(PRESET.length)return PRESET.map(t=>({id:uidGen("t"),name:t.name,group:t.group,players:[poolPlayer(t.icon)]}));
+  const t=[];for(const g of["A","B"])for(let i=1;i<=5;i++)t.push({id:uidGen("t"),name:"",group:g,players:Array.from({length:DEF.squad},()=>({id:uidGen("p"),name:""}))});return t}
+function poolPanel(d){
+  if(!POOL.length)return"";
+  const q=(ui.poolQ||"").trim().toLowerCase();
+  const owner={};d.teams.forEach(t=>t.players.forEach(p=>{if(p.reg)owner[p.reg]=t.id;else if(p.name){const m=POOL.find(x=>x.name.toLowerCase()===p.name.trim().toLowerCase());if(m&&!owner[m.reg])owner[m.reg]=t.id}}));
+  const count=t=>t.players.filter(p=>p.name.trim()).length;
+  const list=POOL.filter(p=>!q||p.name.toLowerCase().includes(q)||String(p.reg)===q);
+  const show=ui.poolAll?list:list.filter(p=>!owner[p.reg]);
+  const opts=tid=>`<option value="">— unsold —</option>`+d.teams.filter(t=>t.name.trim()).map(t=>`<option value="${t.id}"${t.id===tid?" selected":""}>${esc(t.name)} (${count(t)})</option>`).join("");
+  const sold=Object.keys(owner).length;
+  return`<div class="panel"><h2>Auction pool</h2><p class="kv">${sold} of ${POOL.length} players assigned. Pick a team next to each player as they're sold, then <b>Save teams</b> at the bottom. Nothing is shared until you save.</p>
+  <div class="row-btns"><input id="pool-q" placeholder="Search name or reg no." value="${esc(ui.poolQ||"")}" data-poolq="1" style="flex:1;min-width:160px"><label class="check"><input type="checkbox" id="pool-all" data-poolall="1"${ui.poolAll?" checked":""}> Show sold too</label></div>
+  <div class="pool">${show.map(p=>`<div class="prow pr"><span class="pn"><b>${esc(p.name)}</b> <span class="muted small">#${p.reg} · ${p.role}${p.avail!=="All"?" · "+esc(p.avail)+" only":""}</span></span><select data-pool="${p.reg}" aria-label="Team for ${esc(p.name)}">${opts(owner[p.reg])}</select></div>`).join("")||`<div class="kv">No players match.</div>`}</div></div>`;
+}
 function setupView(){
   const d=ui.draft||(ui.draft=T?clone(T):{...clone(DEF),teams:blankTeams()});
   const used=new Set(Object.values(M).flatMap(m=>[m.a,m.b]));
   const league=Object.values(M).filter(isLeague);
   const team=(t,idx)=>{const n=t.players.filter(p=>p.name.trim()).length;
-    return`<details class="team"${!t.name?" open":""}><summary><span>${esc(t.name||"Team "+(idx+1))}</span><span class="muted small">Group ${t.group} · ${n} players</span></summary><div class="in">
+    return`<details class="team"><summary><span>${esc(t.name||"Team "+(idx+1))}</span><span class="muted small">Group ${t.group} · ${n} players</span></summary><div class="in">
     <div class="prow"><input id="tn-${t.id}" value="${esc(t.name)}" placeholder="Team name" data-tname="${t.id}" aria-label="Team name"><select id="tg-${t.id}" data-tgroup="${t.id}" aria-label="Group"><option${t.group==="A"?" selected":""}>A</option><option${t.group==="B"?" selected":""}>B</option></select></div>
     ${t.players.map((p,i)=>`<div class="prow"><input id="pn-${p.id}" value="${esc(p.name)}" placeholder="Player ${i+1}${i===0?" (icon)":i===1?" (marquee)":""}" data-pname="${t.id}:${p.id}" aria-label="Player ${i+1}"><button class="btn sm" data-act="delPlayer" data-id="${t.id}:${p.id}" aria-label="Remove player">✕</button></div>`).join("")}
     <div class="row-btns"><button class="btn sm" data-act="addPlayer" data-id="${t.id}">+ Add player</button><button class="btn sm warn" data-act="delTeam" data-id="${t.id}"${used.has(t.id)?" disabled":""}>Remove team</button></div></div></details>`};
@@ -586,7 +604,12 @@ function setupView(){
    <div class="field"><label class="label" for="st-wideRuns">Runs for a wide</label><input id="st-wideRuns" type="number" min="0" max="2" value="${d.wideRuns}" data-bind="wideRuns"></div>
    <div class="field"><label class="label" for="st-nbRuns">Runs for a no ball</label><input id="st-nbRuns" type="number" min="0" max="2" value="${d.nbRuns}" data-bind="nbRuns"></div></div>
   <p class="kv">From the rules sheet: 12 overs a side, 11 play from a 13-player squad (minimum 9 at the toss), free hit on every no ball, no LBW, no leg byes, win 2 pts, tie or no result 1 pt each, Super Over for knockout ties.</p></div>
-  <div class="panel"><h2>Teams and squads</h2><p class="kv">Fill in after the auction on 1 November. Five teams per group.</p>
+  ${poolPanel(d)}
+  <details class="card"><summary><span>Import teams and squads from text</span><span class="muted small">paste a list</span></summary><div class="in">
+  <p class="kv">Paste one block per team: a line starting <b>Team</b>, then <b>Icon</b>, then player names one per line. Group is set by the order (first five = A). Players added to a team already in the list are merged by name.</p>
+  <textarea id="imp-text" rows="8" placeholder="Team : Mobius Mavericks&#10;Icon : Sayyam Gadiya&#10;Player two&#10;Player three&#10;&#10;Team : Paramount Pioneers&#10;Icon : Deepak Dugar"></textarea>
+  <button class="btn" data-act="importTeams">Import into form</button><div id="imp-msg"></div></div></details>
+  <div class="panel"><h2>Teams and squads</h2><p class="kv">Five teams per group. Use the group dropdown to move a team.</p>
   ${["A","B"].map(g=>`<h3>Group ${g}</h3>`+d.teams.map((t,i)=>t.group===g?team(t,i):"").join("")).join("")}
   <button class="btn sm" data-act="addTeam">+ Add team</button></div>
   <div id="setup-msg"></div>
@@ -595,7 +618,8 @@ function setupView(){
   <div class="grid2"><div class="field"><label class="label" for="pin-cur">Current PIN</label><input id="pin-cur" type="password" inputmode="numeric" autocomplete="current-password"></div>
   <div class="field"><label class="label" for="pin-new">New PIN (6+ digits)</label><input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password"></div></div>
   <div class="row-btns"><button class="btn" data-act="changePin">Change PIN</button><button class="btn" data-act="logout">Log out of scoring</button></div></div>
-  ${T?`<button class="btn warn" data-act="reset">Delete tournament and all matches</button>`:""}
+  <div class="row-btns">${T?`<button class="btn warn" data-act="reset">Delete tournament and all matches</button>`:""}<button class="btn" data-act="loadDemo">Load demo tournament</button></div>
+  <p class="kv">The demo is a full simulated tournament (league to final, 40 fantasy entries) for trying every screen. Delete it before entering the real squads.</p>
   </section>`;
 }
 function roundRobin(ids){
@@ -692,16 +716,39 @@ const acts={
   noResult:()=>ask("Record this match as no result? Both teams get 1 point and it does not count toward net run rate.","No result",()=>endWith(curMatch(),"nr","No result · 1 point each","nr")),
   walkover:el=>{const w=el.dataset.w;ask(`Award a walkover to ${tname(w)}?`,"Award walkover",()=>endWith(curMatch(),w,`${tname(w)} won by walkover`,"wo"))},
   superWin:el=>{const m=curMatch(),w=el.dataset.w;m.super=($("#so-score")?.value||"").trim();endWith(m,w,`${tname(w)} won the Super Over`,"super")},
-  delMatch:()=>ask(`Delete ${stageLabel(M[ui.scoreSel]||{})}? Its scores are removed for everyone.`,"Delete match",()=>{const id=ui.scoreSel;delete M[id];ui.scoreSel=null;if(ui.sel===id)ui.sel=null;render();delMatchDoc(id)}),
+  delMatch:()=>ask(`Delete ${stageLabel(M[ui.scoreSel]||{})}? Its scores are removed for everyone.`,"Delete match",()=>{const id=ui.scoreSel;delete M[id];ui.scoreSel=null;if(ui.sel===id)ui.sel=null;render();delMatchDoc(id);
+    if(!fantasyLocked()){fantasyLockWritten=false;deleteDoc(doc(db,"meta","lock")).catch(()=>{})}}),
   confirmYes:()=>{const f=pendingConfirm?.fn;pendingConfirm=null;if(f)f();else render()},
   confirmNo:()=>{pendingConfirm=null;render()},
+  importTeams:()=>{
+    const txt=$("#imp-text").value;const blocks=[];let cur=null;
+    const tidy=v=>v.replace(/^\s*[:\-–]\s*/,"").replace(/\s+/g," ").trim();
+    const cap=v=>v.toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase());
+    for(const raw of txt.split(/\r?\n/)){const line=raw.trim();if(!line)continue;
+      let m=line.match(/^team(?:\s*name)?\.?\s*[:\-–]\s*(.+)$/i);
+      if(m){cur={name:m[1].trim().toUpperCase(),players:[]};blocks.push(cur);continue}
+      if(!cur)continue;
+      m=line.match(/^icon(?:\s*name)?\.?\s*[:\-–]\s*(.+)$/i);
+      if(m){cur.players.unshift(cap(m[1].trim()));continue}
+      m=line.match(/^(?:marquee|player\s*\d*)\s*[:\-–]\s*(.+)$/i);
+      cur.players.push(cap(tidy(m?m[1]:line)));}
+    if(!blocks.length){flashAt("imp-msg","No teams found. Each team needs a line starting with Team.");return}
+    const d=ui.draft;let added=0,merged=0;
+    blocks.forEach((b,i)=>{let t=d.teams.find(x=>x.name.trim().toUpperCase()===b.name);
+      if(!t){t=d.teams.find(x=>!x.name.trim()&&!x.players.some(p=>p.name.trim()));
+        if(t){t.name=b.name}else{t={id:uidGen("t"),name:b.name,group:"A",players:[]};d.teams.push(t)}
+        t.group=d.teams.filter(x=>x.name.trim()).indexOf(t)<5?"A":"B";added++}else merged++;
+      const have=new Set(t.players.map(p=>p.name.trim().toLowerCase()));
+      b.players.forEach(n=>{if(have.has(n.toLowerCase()))return;const np=poolPlayer(n);const slot=t.players.find(p=>!p.name.trim());if(slot)Object.assign(slot,{name:np.name,reg:np.reg,role:np.role});else t.players.push(np);have.add(n.toLowerCase())});
+    });
+    render();flashAt("imp-msg",`${added} team${added===1?"":"s"} added, ${merged} updated. Check the groups, then Save teams.`,true)},
   addTeam:()=>{ui.draft.teams.push({id:uidGen("t"),name:"",group:"B",players:Array.from({length:DEF.squad},()=>({id:uidGen("p"),name:""}))});render()},
   delTeam:el=>{ui.draft.teams=ui.draft.teams.filter(t=>t.id!==el.dataset.id);render()},
   addPlayer:el=>{ui.draft.teams.find(t=>t.id===el.dataset.id).players.push({id:uidGen("p"),name:""});render()},
   delPlayer:el=>{const[tid,pid]=el.dataset.id.split(":");const t=ui.draft.teams.find(t=>t.id===tid);t.players=t.players.filter(p=>p.id!==pid);render()},
   saveSetup:()=>{const d=clone(ui.draft);d.name=(d.name||"").trim()||DEF.name;
     d.wideRuns=Math.max(0,parseInt(d.wideRuns,10)||0);d.nbRuns=Math.max(0,parseInt(d.nbRuns,10)||0);
-    d.teams=d.teams.map(t=>({id:t.id,name:(t.name||"").trim(),group:t.group,players:t.players.map(p=>({id:p.id,name:(p.name||"").trim()})).filter(p=>p.name)})).filter(t=>t.name||t.players.length);
+    d.teams=d.teams.map(t=>({id:t.id,name:(t.name||"").trim(),group:t.group,players:t.players.map(p=>{const o={id:p.id,name:(p.name||"").trim()};if(p.reg)o.reg=p.reg;if(p.role)o.role=p.role;return o}).filter(p=>p.name)})).filter(t=>t.name||t.players.length);
     const short=d.teams.find(t=>t.players.length<DEF.minXi);
     const bad=d.teams.length<2?"Add at least two teams with names.":d.teams.find(t=>!t.name)?"Every team needs a name.":short?`${short.name} needs at least ${DEF.minXi} players.`:"";
     if(bad){flash(bad);return}
@@ -717,10 +764,27 @@ const acts={
     try{await reauthenticateWithCredential(auth.currentUser,EmailAuthProvider.credential(CFG.scorerEmail,cur));await updatePassword(auth.currentUser,nw);flash("PIN changed. Share the new PIN with your scorers.",true)}
     catch(e){flash(e?.code==="auth/wrong-password"||e?.code==="auth/invalid-credential"?"Current PIN is wrong.":"PIN not changed. Try again.")}},
   logout:()=>{signOut(auth);ui.tab="live";render()},
-  reset:()=>ask("Delete the tournament, all teams, every match and all predictions? This cannot be undone.","Delete everything",()=>{
-    const batch=writeBatch(db);Object.keys(M).forEach(id=>{batch.delete(doc(db,"matches",id));batch.delete(doc(db,"polls",id))});batch.delete(doc(db,"tournament","main"));batch.delete(doc(db,"meta","lock"));fantasyLockWritten=false;
-    batch.commit().catch(()=>flash("Not deleted. Check your connection."));M={};T=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;render()}),
+  reset:()=>ask("Delete the tournament, all teams, every match, all predictions and all fantasy teams? This cannot be undone.","Delete everything",async()=>{
+    try{const batch=writeBatch(db);Object.keys(M).forEach(id=>{batch.delete(doc(db,"matches",id));batch.delete(doc(db,"polls",id))});batch.delete(doc(db,"tournament","main"));batch.delete(doc(db,"meta","lock"));
+      const fs=await getDocs(collection(db,"fantasy"));let b2=batch,n=0;const extra=[];
+      fs.docs.forEach(d=>{if(n++>=400){b2=writeBatch(db);extra.push(b2);n=1}b2.delete(d.ref)});
+      await batch.commit();for(const b of extra)await b.commit();
+      fantasyLockWritten=false;M={};T=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;FT.all=null;FT.mine=null;render();flash("Everything deleted.",true)}
+    catch(e){flash("Not fully deleted. Check your connection and try again.")}}),
+  loadDemo:()=>ask("Load the demo tournament? This replaces everything currently saved (teams, matches, predictions, fantasy teams) with simulated data.","Load demo",async()=>{
+    flash("Loading demo…",true);
+    try{const r=await fetch("demo.json",{cache:"no-store"});if(!r.ok)throw new Error("fetch");const d=await r.json();
+      // wipe first
+      const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,"matches",id));wipe.delete(doc(db,"polls",id))});wipe.delete(doc(db,"meta","lock"));
+      const fs=await getDocs(collection(db,"fantasy"));fs.docs.forEach(x=>wipe.delete(x.ref));await wipe.commit();
+      const b=writeBatch(db);b.set(doc(db,"tournament","main"),d.tournament);
+      Object.values(d.matches).forEach(m=>b.set(doc(db,"matches",m.id),{...m,upd:Date.now()}));
+      (d.fantasy||[]).forEach(f=>b.set(doc(db,"fantasy",f.id),{name:f.name,p:f.p,uid:f.uid,at:Date.now(),demo:true}));
+      b.set(doc(db,"meta","lock"),{at:Date.now(),demo:true});
+      await b.commit();fantasyLockWritten=true;FT.all=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;ui.tab="live";render();flash("Demo loaded.",true)}
+    catch(e){flash(e?.code==="permission-denied"?"Demo not loaded: paste the latest firestore.rules into Firebase first.":"Demo not loaded. Check your connection.")}}),
 };
+function flashAt(id,msg,good){const el=$("#"+id);if(el)el.innerHTML=`<div class="msg" style="color:var(${good?"--good":"--out"})">${esc(msg)}</div>`}
 function flash(msg,good){
   let el=ui.tab==="setup"?$("#setup-msg"):null;
   if(!el){el=document.createElement("div");$("#app section")?.prepend(el)}
@@ -738,6 +802,7 @@ document.addEventListener("submit",async e=>{
 document.addEventListener("input",e=>{
   const t=e.target;
   if(t.dataset.fname&&FT.draft){FT.draft.name=t.value;return}
+  if(t.dataset.poolq){ui.poolQ=t.value;const sc=scrollY;render();const q=$("#pool-q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}scrollTo(0,sc);return}
   if(t.dataset.fq){FT.q=t.value;renderDeferred=false;const sc=scrollY;render();const q=$("#f-q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}scrollTo(0,sc);return}
   const d=ui.draft;if(!d)return;
   if(t.dataset.bind)d[t.dataset.bind]=t.value;
@@ -746,6 +811,11 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;
+  if(t.dataset.pool&&ui.draft){const reg=+t.dataset.pool,d=ui.draft,P=POOL.find(x=>x.reg===reg);
+    d.teams.forEach(x=>{x.players=x.players.filter(p=>!(p.reg===reg||(!p.reg&&p.name.trim().toLowerCase()===P.name.toLowerCase())))});
+    if(t.value){const tm=d.teams.find(x=>x.id===t.value);const slot=tm.players.find(p=>!p.name.trim());const np={id:slot?slot.id:uidGen("p"),name:P.name,reg:P.reg,role:P.role};if(slot)Object.assign(slot,np);else tm.players.push(np)}
+    const sc=scrollY;render();scrollTo(0,sc);return}
+  if(t.dataset.poolall){ui.poolAll=t.checked;render();return}
   if(t.dataset.tgroup&&ui.draft){ui.draft.teams.find(x=>x.id===t.dataset.tgroup).group=t.value;t.blur();render()}
   if(t.dataset.nm&&ui.nm){ui.nm[t.dataset.nm]=t.value;if(t.dataset.nm==="stage"){const[a,b]=suggest(t.value);if(a)ui.nm.a=a;if(b)ui.nm.b=b}t.blur();render()}
   if(t.dataset.tz&&ui.toss){ui.toss[t.dataset.tz]=t.value;t.blur();render()}
