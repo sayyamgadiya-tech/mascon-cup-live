@@ -180,6 +180,57 @@ function tourStats(){
 }
 
 
+
+/* ================= milestones ================= */
+const MS_BAT=[30,50,75],MS_WK=[3,5],MS_TEAM=[50,100,150];
+function milestones(m){
+  const out=[];
+  (m.inn||[]).forEach((inn,ii)=>{
+    const br={},bw={},seq={};let runs=0,legal=0,ovRuns=0,ovSix=0,ovBalls=[],part=0,partKey="";const hit=new Set();
+    const push=(idx,type,text,pid)=>out.push({key:`${m.id}:${ii}:${idx}:${type}:${pid||""}`,ii,idx,type,text,pid});
+    inn.balls.forEach((b,idx)=>{
+      const tot=ballRuns(b);runs+=tot;const w=validW(b);
+      // batter
+      if(b.t==="run"||b.t==="nb"){const before=br[b.s]||0;br[b.s]=before+b.r;MS_BAT.forEach(t=>{if(before<t&&br[b.s]>=t)push(idx,"bat",`${t} for ${pname(b.s)}`,b.s)})}
+      // partnership
+      const pk=[b.s,b.ns].sort().join("|");if(pk!==partKey){partKey=pk;part=0;hit.delete("part")}
+      part+=tot;if(part>=50&&!hit.has("part")){hit.add("part");push(idx,"part",`50 partnership: ${pname(b.s)} & ${pname(b.ns)}`)}
+      if(w)part=0,hit.delete("part"),partKey="";
+      // team
+      MS_TEAM.forEach(t=>{if(runs-tot<t&&runs>=t)push(idx,"team",`${tname(inn.bat)} ${t} up`)});
+      // bowler wickets + hat-trick
+      if(w&&w.k!=="ro"&&w.k!=="x"){const before=bw[b.bw]||0;bw[b.bw]=before+1;MS_WK.forEach(t=>{if(before<t&&bw[b.bw]>=t)push(idx,"wkt",`${t} wickets for ${pname(b.bw)}`,b.bw)})}
+      if(b.t!=="wd"&&b.t!=="nb"){const s=seq[b.bw]||(seq[b.bw]=[]);s.push(!!(w&&w.k!=="ro"&&w.k!=="x"));if(s.length>=3&&s.slice(-3).every(Boolean)&&!(s.length>=4&&s.slice(-4).every(Boolean)))push(idx,"hat",`Hat-trick for ${pname(b.bw)}!`,b.bw)}
+      // over
+      ovRuns+=tot;if((b.t==="run"||b.t==="nb")&&b.r===6)ovSix++;ovBalls.push(b);
+      if(isLegal(b)){legal++;if(legal%6===0){
+        const bowlerRuns=ovBalls.reduce((x,y)=>x+(y.t==="bye"||y.t==="lb"?0:ballRuns(y)),0);
+        if(bowlerRuns===0&&ovBalls.every(y=>isLegal(y)))push(idx,"maiden",`Maiden over by ${pname(b.bw)}`,b.bw);
+        if(ovRuns>=20)push(idx,"over",`${ovRuns} runs off the over from ${pname(b.bw)}`);
+        else if(ovSix>=3)push(idx,"over",`${ovSix} sixes in the over`);
+        ovRuns=0;ovSix=0;ovBalls=[]}}
+    });
+  });
+  return out;
+}
+const MS_ICON={bat:"🏏",part:"🤝",team:"📈",wkt:"🎯",hat:"🎩",maiden:"🧱",over:"💥"};
+let msSeen=null;
+function msToast(list){
+  list.slice(-3).forEach((x,i)=>setTimeout(()=>{
+    const el=document.createElement("div");el.className="mstoast";el.innerHTML=`<span class="mi">${MS_ICON[x.type]||"⭐"}</span><span><small>${esc(stageLabel(M[x.key.split(":")[0]]||{}))}</small><b>${esc(x.text)}</b></span>`;
+    el.addEventListener("click",()=>{ui.sel=x.key.split(":")[0];ui.tab="live";render();el.remove()});
+    document.body.appendChild(el);requestAnimationFrame(()=>el.classList.add("in"));
+    setTimeout(()=>{el.classList.remove("in");setTimeout(()=>el.remove(),400)},6000);
+  },i*1800));
+}
+function msCheck(){
+  const live=Object.values(M).filter(m=>m.status==="live"||m.status==="break"||m.status==="done");
+  const all=live.flatMap(milestones);const keys=new Set(all.map(x=>x.key));
+  if(msSeen===null){msSeen=keys;return}
+  const fresh=all.filter(x=>!msSeen.has(x.key)&&M[x.key.split(":")[0]]&&(Date.now()-(M[x.key.split(":")[0]].upd||0))<10*60*1000);
+  msSeen=keys;if(fresh.length&&!canScore)msToast(fresh);else if(fresh.length&&canScore)msToast(fresh.slice(-1));
+}
+
 /* ================= fantasy ================= */
 const FP={run:1,four:1,six:2,thirty:4,fifty:8,wkt:25,haul3:8,field:8,dot:1,maiden:12,duck:-2};
 function fantasyPoints(){
@@ -437,6 +488,7 @@ function feedText(b){
   return`${who}, ${d}${b.fh?" · free hit":""}<span class="ns">non-striker ${esc(pname(b.ns))}</span>`;
 }
 function feedHtml(m){
+  const msByBall=new Map();milestones(m).forEach(x=>{const b=m.inn[x.ii].balls[x.idx];if(!msByBall.has(b))msByBall.set(b,[]);msByBall.get(b).push(x)});
   // group balls by over, newest over first, with an end-of-over summary (bowler, runs, score, batters)
   const blocks=[];
   m.inn.forEach((inn,ii)=>{
@@ -456,7 +508,7 @@ function feedHtml(m){
   return`<div><div class="label">Ball by ball</div><div class="feed">${recent.map(o=>`
     <div class="ovhead${o.complete?"":" open"}"><div class="ovh1"><span><b>${o.complete?"End of over "+o.ovNo:"Over "+o.ovNo}</b> · ${o.ovRuns} run${o.ovRuns===1?"":"s"}${o.ovWk?` · ${o.ovWk} wkt`:""}</span><b class="sc">${esc(o.bat)} ${o.scoreAfter}/${o.wkAfter}</b></div>
     <div class="ovh2"><span>${o.batters}</span><span>${esc(pname(o.bw))} ${o.bowlTot.w}-${o.bowlTot.r} (${ovs(o.bowlTot.l)})</span></div></div>
-    ${o.balls.map(e=>`<div class="row${validW(e.b)?" wk":""}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></div>`).join("")}`).join("")}</div>${blocks.length>4?`<p class="kv">Showing the last 4 overs. Full details are in the scorecard.</p>`:""}</div>`;
+    ${o.balls.map(e=>{const ms=msByBall.get(e.b);return`<div class="row${validW(e.b)?" wk":""}${ms?" ms":""}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}${ms?ms.map(x=>`<span class="msl">${MS_ICON[x.type]} ${esc(x.text)}</span>`).join(""):""}</span></div>`}).join("")}`).join("")}</div>${blocks.length>4?`<p class="kv">Showing the last 4 overs. Full details are in the scorecard.</p>`:""}</div>`;
 }
 function cardHtml(m,i,open){
   const inn=m.inn[i],st=innStats(inn),live=m.status==="live"&&!inn.closed;
@@ -484,8 +536,10 @@ function shareText(m){
   if(typeof location!=="undefined"&&location.origin)lines.push(location.origin+location.pathname);return lines.join("\n");
 }
 function shareBtn(m){return`<a class="btn sm wa" href="https://wa.me/?text=${encodeURIComponent(shareText(m))}" target="_blank" rel="noopener">Share on WhatsApp</a>`}
+function msStrip(m){const l=milestones(m);if(!l.length)return"";
+  return`<div><div class="label">Milestones</div><div class="mslist">${l.slice().reverse().map(x=>`<span class="msc"><span>${MS_ICON[x.type]}</span>${esc(x.text)}</span>`).join("")}</div></div>`}
 function matchDetail(m){
-  return`${boardHtml(m)}<div class="row-btns">${shareBtn(m)}</div>${pollHtml(m)}${feedHtml(m)}
+  return`${boardHtml(m)}<div class="row-btns">${shareBtn(m)}</div>${msStrip(m)}${pollHtml(m)}${feedHtml(m)}
   ${m.inn.length?`<div class="label">Scorecard</div>`+m.inn.map((_,i)=>cardHtml(m,i,i===m.inn.length-1)).join(""):""}
   ${m.super?`<div class="kv"><b>Super Over:</b> ${esc(m.super)}</div>`:""}`;
 }

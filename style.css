@@ -328,3 +328,17 @@ html.wl-open,html.wl-open body{overflow:hidden}
 .sponsors img{height:26px;width:auto}
 .sponsors .wrap{padding-block:7px}
 .wl-tile.dark{background:#000;border:1px solid #262626}
+
+/* milestones */
+.mstoast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translate(-50%,-140%);z-index:40;display:flex;align-items:center;gap:12px;
+  background:var(--gold);color:#000;border-radius:14px;padding:12px 16px;box-shadow:0 8px 28px rgba(0,0,0,.45);width:min(92vw,420px);cursor:pointer;transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.mstoast.in{transform:translate(-50%,0)}
+.mstoast .mi{font-size:28px;line-height:1}
+.mstoast span:last-child{display:flex;flex-direction:column;line-height:1.2}
+.mstoast small{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;opacity:.7}
+.mstoast b{font-family:var(--display);font-size:20px;font-weight:800}
+@media (prefers-reduced-motion:reduce){.mstoast{transition:none}}
+.feed .row.ms{background:linear-gradient(90deg,rgba(246,197,68,.14),transparent)}
+.msl{display:inline-block;margin-top:4px;background:var(--gold);color:#000;font-weight:700;font-size:12px;border-radius:999px;padding:2px 9px}
+.mslist{display:flex;flex-wrap:wrap;gap:6px}
+.msc{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
