@@ -370,3 +370,4 @@ ul.rules li::marker{color:var(--gold)}
 .cupsw{display:inline-flex;gap:4px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px;margin:2px 0 6px}
 .cupsw a{padding:5px 16px;border-radius:999px;font-weight:700;font-size:14px;color:var(--muted);text-decoration:none;letter-spacing:.02em}
 .cupsw a[aria-current="true"]{background:var(--gold);color:#000}
+.spsub{font-size:16px}

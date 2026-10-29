@@ -21,15 +21,13 @@ window.MASCON_CONFIG = {
     title: "Welcome to the Ahore Mascon Cup 2026",
     message: "Live scores, points table, player stats and the fantasy league, all in one place.",
     sponsors: [
-      { role: "Title sponsor", name: "Mascon Innovative Lighting", logo: "mascon-dark.png", dark: true },
-      { role: "Cup sponsor", name: "Sha Nemichandji Chaganrajji Dugar" },
+      { role: "Title & cup sponsor", name: "Mascon Innovative Lighting", sub: "Sha Nemichandji Chaganrajji Dugar", logo: "mascon-dark.png", dark: true },
       { role: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] }
     ],
     seconds: 7
   },
   // Full sponsor list (Rules & sponsors tab and the bottom of the home page). No amounts shown.
   sponsorList: [
-    { title: "Cup sponsor", names: ["Sha Nemichandji Chaganrajji Dugar"] },
     { title: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] },
     { title: "Jersey sponsor", names: ["M/s Avinash Metals"] },
     { title: "Adults cricket team sponsors", names: ["Sha Kantilalji Pukhrajji Kuhad", "M/s Ambika Aluminium", "Sha Anand Kumarji Vaagmalji Katariya", "Smt Badami Bai Phoolchandji Gadiya", "Smt Kamalabai Gulabchandji Dantewadia", "Sha Kiran Kumarji Sugalchandji Lunkad", "Sha Mahipalji Ganeshmalji Gadiya", "M/s Kalpataru Glass", "Smt Hulasi Bai Chaganrajji Hundia", "Sha Shankarlal Ji Meghrajji Dugar"] },

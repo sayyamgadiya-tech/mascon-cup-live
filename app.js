@@ -430,7 +430,7 @@ function welcomeShow(){
   const sp=(w.sponsors||[]).filter(s=>s&&(s.name||s.logo||s.names));
   el.innerHTML=`<div class="wl-in">${CFG.appLogo?`<img class="wl-logo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark wl-mark" aria-hidden="true"></span>`}
     ${w.organiser?`<span class="wl-org">${esc(w.organiser)}</span>`:""}<h2 class="wl-title">${esc(w.title||"")}</h2>${w.message?`<p class="wl-msg">${esc(w.message)}</p>`:""}
-    ${sp.length?`<div class="wl-sp">${sp.map((s,i)=>`<div class="wl-s${i===0?" main":""}"><span class="wl-role">${esc(s.role||"")}</span>${s.logo?`<span class="wl-tile${s.dark?" dark":""}"><img src="brand/${esc(s.logo)}" alt="${esc(s.name||"")}"></span>`:(s.names||[s.name]).map(n=>`<b>${esc(n||"")}</b>`).join("")}</div>`).join("")}</div>`:""}
+    ${sp.length?`<div class="wl-sp">${sp.map((s,i)=>`<div class="wl-s${i===0?" main":""}"><span class="wl-role">${esc(s.role||"")}</span>${s.logo?`<span class="wl-tile${s.dark?" dark":""}"><img src="brand/${esc(s.logo)}" alt="${esc(s.name||"")}"></span>${s.sub?`<b>${esc(s.sub)}</b>`:""}`:(s.names||[s.name]).map(n=>`<b>${esc(n||"")}</b>`).join("")}</div>`).join("")}</div>`:""}
     <button class="btn pri wl-go" type="button">See live scores</button><div class="wl-bar"><span style="animation-duration:${(+w.seconds||5)}s"></span></div></div>`;
   document.body.appendChild(el);document.documentElement.classList.add("wl-open");
   const close=()=>{if(!el.isConnected)return;el.classList.add("out");document.documentElement.classList.remove("wl-open");setTimeout(()=>el.remove(),350);try{sessionStorage.setItem("mc-welcome","1")}catch(e){}};
@@ -681,7 +681,7 @@ function playerView(){
 function sponsorsBlock(){
   const L=CFG.sponsorList||[];const title=(CFG.welcome?.sponsors||[]).find(s=>s.logo);
   if(!L.length&&!title)return"";
-  return`<h2>Our sponsors</h2><div class="spons">${title?`<div class="spg main"><span class="label">${esc(title.role||"Title sponsor")}</span><span class="wl-tile${title.dark?" dark":""}"><img src="brand/${esc(title.logo)}" alt="${esc(title.name||"")}"></span></div>`:""}
+  return`<h2>Our sponsors</h2><div class="spons">${title?`<div class="spg main"><span class="label">${esc(title.role||"Title sponsor")}</span><span class="wl-tile${title.dark?" dark":""}"><img src="brand/${esc(title.logo)}" alt="${esc(title.name||"")}"></span>${title.sub?`<b class="spsub">${esc(title.sub)}</b>`:""}</div>`:""}
   ${L.map(g=>`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${g.names.map(n=>{const tm=(window.MASCON_TEAMS||[]).find(t=>t.sponsor&&t.sponsor.toLowerCase()===n.toLowerCase());const kt=Object.keys(KSP).find(k=>KSP[k].toLowerCase()===n.toLowerCase());const lab=tm?tm.name:kt?kt+" (kids)":"";return`<span>${esc(n)}${lab?`<em>${esc(lab)}</em>`:""}</span>`}).join("")}</div></div>`).join("")}</div>`;
 }
 const RULES=[
