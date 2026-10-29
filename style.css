@@ -283,3 +283,10 @@ html.th-pitch{--bg:#F2F5EF;--surface:#FFFFFF;--line:#D3DDCC;--ink:#0F2418;--mute
 /* 3. Charcoal and gold: neutral white page, near-black header */
 html.th-charcoal{--bg:#FFFFFF;--surface:#F6F7F9;--line:#E2E5EA;--ink:#14171C;--muted:#5E6673;--chip:#ECEEF1;--q:#FFF4D1;
   --board:#16191F;--board2:#2A2F38;--board-ink:#F7F8FA;--board-muted:#A7AEB9;--gold:#F2BE3A;--gold2:#C58A0E}
+/* 4. Black: true black page, charcoal cards, gold accents */
+html.th-black{--bg:#000000;--surface:#111111;--line:#262626;--ink:#F5F5F5;--muted:#A3A3A3;--chip:#1C1C1C;--q:#2A2410;
+  --board:#0A0A0A;--board2:#1A1A1A;--board-ink:#FFFFFF;--board-muted:#9A9A9A;--gold:#F6C544;--gold2:#F6C544;color-scheme:dark}
+html.th-black .tcard,html.th-black .mini,html.th-black .mrow,html.th-black .pod,html.th-black .tbl,html.th-black .panel,html.th-black details.card,html.th-black .btn,html.th-black .board{box-shadow:none}
+html.th-black .board{border:1px solid #262626;border-top:4px solid var(--gold)}
+html.th-black .pod.r1{background:linear-gradient(180deg,#2E2710,var(--surface))}
+html.th-black header.top{border-bottom:1px solid #262626}
