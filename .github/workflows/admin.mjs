@@ -50,4 +50,7 @@ if (ACTION === "real-setup") {
     w.push({ update: { name: `${root}/matches/${id}`, fields: enc({ id, no: ++no, stage: g, a, b, status: "scheduled", inn: [], result: "", winner: null, overs: 12, upd: Date.now() }).mapValue.fields } });
   }
   await commit(w); console.log("created 10 teams and", no, "fixtures");
+} else if (ACTION === "status") {
+  const c = {}; for (const col of ["tournament", "matches", "polls", "fantasy", "fans", "meta"]) c[col] = (await listIds(col)).length;
+  console.log("::notice title=Firestore counts::" + JSON.stringify(c));
 } else { console.error("Unknown ACTION", ACTION); process.exit(1); }

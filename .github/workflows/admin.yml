@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "real-setup"
+        description: "real-setup or status"
         required: true
         default: real-setup
 jobs:
