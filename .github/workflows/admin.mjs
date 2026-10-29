@@ -50,8 +50,18 @@ if (ACTION === "real-setup") {
     w.push({ update: { name: `${root}/matches/${id}`, fields: enc({ id, no: ++no, stage: g, a, b, status: "scheduled", inn: [], result: "", winner: null, overs: 12, upd: Date.now() }).mapValue.fields } });
   }
   await commit(w); console.log("created 10 teams and", no, "fixtures");
+} else if (ACTION === "kids-teams") {
+  // Create the kids tournament with its 4 teams (no players, no fixtures yet). Refuses if it already exists.
+  const ex = await client.request({ method: "GET", url: `${api}/ktournament/main` }).then(() => true).catch(e => { if (e.response?.status === 404) return false; throw e; });
+  if (ex) { console.log("::notice title=Kids::ktournament already exists, not touched"); }
+  else {
+    const DEF = { name: "Ahore Mascon Cup 2026 Kids", emergingAge: 21, overs: 12, xi: 11, minXi: 9, squad: 13, wideRuns: 1, nbRuns: 1, freeHit: true, noLbw: true, noLegBye: true, ptsWin: 2, ptsTie: 1, ptsNR: 1 };
+    const teams = ["TITANS", "MPC CHALLENGERS", "KOTHARI XI", "YOUNG FIGHTERS"].map(n => ({ id: uidGen("t"), name: n, group: "A", players: [] }));
+    await commit([{ update: { name: `${root}/ktournament/main`, fields: enc({ ...DEF, teams }).mapValue.fields } }]);
+    console.log("::notice title=Kids::created 4 kids teams");
+  }
 } else if (ACTION === "status") {
-  const c = {}; for (const col of ["tournament", "matches", "polls", "fantasy", "fans", "meta"]) c[col] = (await listIds(col)).length;
+  const c = {}; for (const col of ["tournament", "matches", "polls", "fantasy", "fans", "meta", "ktournament", "kmatches"]) c[col] = (await listIds(col)).length;
   console.log("::notice title=Firestore counts::" + JSON.stringify(c));
 } else if (ACTION === "go-live-check") {
   const note = (t, m) => console.log(`::notice title=${t}::${m}`);
