@@ -53,4 +53,28 @@ if (ACTION === "real-setup") {
 } else if (ACTION === "status") {
   const c = {}; for (const col of ["tournament", "matches", "polls", "fantasy", "fans", "meta"]) c[col] = (await listIds(col)).length;
   console.log("::notice title=Firestore counts::" + JSON.stringify(c));
+} else if (ACTION === "go-live-check") {
+  const note = (t, m) => console.log(`::notice title=${t}::${m}`);
+  const DOMAIN = "sayyamgadiya-tech.github.io", SITE = `https://${DOMAIN}/mascon-cup-live/`;
+  // 1. Authorized domains for Firebase Auth
+  try {
+    const cfgUrl = `https://identitytoolkit.googleapis.com/admin/v2/projects/${project}/config`;
+    const cfg = await call("GET", cfgUrl);
+    const doms = cfg.authorizedDomains || [];
+    if (doms.includes(DOMAIN)) note("Auth domain", "already authorized: " + doms.join(", "));
+    else { const r = await call("PATCH", cfgUrl + "?updateMask=authorizedDomains", { authorizedDomains: [...doms, DOMAIN] }); note("Auth domain", "ADDED. Now: " + (r.authorizedDomains || []).join(", ")); }
+  } catch (e) { note("Auth domain FAILED", e.message.slice(0, 300)); }
+  // 2. Live site serves the latest files
+  for (const f of ["", "players.js", "config.js", "app.js"]) {
+    try { const r = await fetch(SITE + f + "?t=" + Date.now()); const t = await r.text();
+      note("Site " + (f || "index.html"), `${r.status} ${t.length} bytes${f === "players.js" ? " kidsSponsors=" + t.includes("MASCON_KIDS_SPONSORS") + " hundia=" + t.includes('"sponsor":"Smt Hulasi') : ""}${f === "app.js" ? " kids=" + t.includes("cup=kids") : ""}`);
+    } catch (e) { note("Site " + f + " FAILED", e.message); }
+  }
+  // 3. Anonymous sign-in as a phone on the new site would do it (same API key, Referer = new site)
+  try {
+    const key = "AIzaSyBv8PYkcXsOSrNxsIkMVn-_EYo0Hrm0Yqg";
+    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${key}`, { method: "POST", headers: { "content-type": "application/json", Referer: SITE, Origin: `https://${DOMAIN}` }, body: JSON.stringify({ returnSecureToken: true }) });
+    const j = await r.json(); note("Fan sign-in from new site", r.status + " " + (j.idToken ? "OK" : JSON.stringify(j.error || j).slice(0, 200)));
+    if (j.localId) await call("POST", `https://identitytoolkit.googleapis.com/v1/projects/${project}/accounts:delete`, { localId: j.localId }).catch(() => {});
+  } catch (e) { note("Fan sign-in FAILED", e.message); }
 } else { console.error("Unknown ACTION", ACTION); process.exit(1); }

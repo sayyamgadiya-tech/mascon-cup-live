@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "real-setup or status"
+        description: "real-setup, status or go-live-check"
         required: true
         default: real-setup
 jobs:
