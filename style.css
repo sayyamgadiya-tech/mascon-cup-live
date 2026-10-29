@@ -342,3 +342,24 @@ html.wl-open,html.wl-open body{overflow:hidden}
 .msl{display:inline-block;margin-top:4px;background:var(--gold);color:#000;font-weight:700;font-size:12px;border-radius:999px;padding:2px 9px}
 .mslist{display:flex;flex-wrap:wrap;gap:6px}
 .msc{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
+
+/* player links, player profile, rules, sponsors */
+.plink,[data-act="player"]{cursor:pointer}
+.plink{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.plink:hover{text-decoration-color:var(--gold)}
+.ptiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(min-width:640px){.ptiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.ptile{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ptile .lab{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.ptile b{font-family:"Saira Condensed",sans-serif;font-size:32px;line-height:1.1;color:var(--gold)}
+tr.clk{cursor:pointer}
+ul.rules{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;line-height:1.45}
+ul.rules li::marker{color:var(--gold)}
+.spons{display:flex;flex-direction:column;gap:10px}
+.spg{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.spg.main .wl-tile{max-width:320px}
+.spg.main .wl-tile img{max-height:64px;width:auto}
+.spn-list{display:flex;flex-wrap:wrap;gap:6px}
+.spn-list span{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:14px;font-weight:600}
+.wl-s b{font-size:19px;min-height:0;text-align:center;line-height:1.2}
+.welcome{overflow-y:auto;align-items:flex-start}.wl-in{margin:auto 0}.wl-s.main .wl-tile img{max-height:80px}

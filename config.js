@@ -16,16 +16,25 @@ window.MASCON_CONFIG = {
   appLogo: "sajym.png",
   // Welcome screen shown each time someone opens the link (once per visit). Logos go in the "brand" folder.
   welcome: {
-    enabled: false,   // switch on once the sponsor logos are in
+    enabled: true,
     organiser: "Organised by Sri Ahore Jain Pravasi Sangh, Bengaluru",
     title: "Welcome to the Ahore Mascon Cup 2026",
     message: "Live scores, points table, player stats and the fantasy league, all in one place.",
     sponsors: [
       { role: "Title sponsor", name: "Mascon Innovative Lighting", logo: "mascon-dark.png", dark: true },
-      { role: "Food partner", name: "Food sponsor", logo: "" }
+      { role: "Cup sponsor", name: "Sha Nemichandji Chaganrajji Dugar" },
+      { role: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] }
     ],
-    seconds: 5
+    seconds: 7
   },
+  // Full sponsor list (Rules & sponsors tab and the bottom of the home page). No amounts shown.
+  sponsorList: [
+    { title: "Cup sponsor", names: ["Sha Nemichandji Chaganrajji Dugar"] },
+    { title: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] },
+    { title: "Jersey sponsor", names: ["M/s Avinash Metals"] },
+    { title: "Adults cricket team sponsors", names: ["Sha Kantilalji Pukhrajji Kuhad", "M/s Ambika Aluminium", "Sha Anand Kumarji Vaagmalji Katariya", "Smt Badami Bai Pukhrajji Gadiya", "Smt Kamalabai Gulabchandji Dantewadia", "Sha Kiran Kumarji Sugalchandji Lunkad", "Sha Mahipalji Ganeshmalji Gadiya", "M/s Kalpataru Glass", "Smt Hulasi Bai Chaganrajji Hundia", "Sha Shankarlal Ji Meghrajji Dugar"] },
+    { title: "Kids cricket team sponsors", names: ["Sha Tejrajji Bhoormalji Kothari", "M/s Mahaveer Glass House", "Sha Mithalalji Chaganrajji Dugar", "Sha Narpatrajji Sugalchandji Lunkad"] }
+  ],
   // Sponsor strip under the header. Add a name, or a logo file placed in this folder (e.g. "mascon.png").
   sponsors: [
     { name: "Mascon", logo: "brand/mascon-clear.png" }
