@@ -364,8 +364,23 @@ function headerHtml(){
   if(canScore){t.push(["score","Score"]);t.push(["setup","Setup"])}
   const nm=(T?.name||DEF.name).replace(/\s*\(DEMO\)\s*/i,"");const demo=/DEMO/i.test(T?.name||"");
   const parts=nm.split(/\s+/);const eyebrow=parts.length>2?parts[0]:"";const main=parts.length>2?parts.slice(1).join(" "):nm;
-  return`<div class="wrap"><div class="brand"><span class="mark" aria-hidden="true"></span><h1>${eyebrow?`<small>${esc(eyebrow)}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
+  return`<div class="wrap"><div class="brand">${CFG.appLogo?`<img class="applogo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark" aria-hidden="true"></span>`}<h1>${eyebrow?`<small>${esc(eyebrow)}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
   <nav class="tabs" aria-label="Sections">${t.map(([k,l])=>`<button data-act="tab" data-v="${k}" aria-current="${ui.tab===k}">${l}</button>`).join("")}</nav></div>${sponsorHtml()}`;
+}
+function welcomeShow(){
+  const w=CFG.welcome;if(!w)return;let seen=w.enabled===false;try{seen=sessionStorage.getItem("mc-welcome")==="1"}catch(e){}
+  try{if(new URLSearchParams(location.search).get("welcome")==="1")seen=false}catch(e){}
+  if(seen)return;
+  const el=document.createElement("div");el.className="welcome";el.setAttribute("role","dialog");el.setAttribute("aria-label","Welcome");
+  const sp=(w.sponsors||[]).filter(s=>s&&(s.name||s.logo));
+  el.innerHTML=`<div class="wl-in">${CFG.appLogo?`<img class="wl-logo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark wl-mark" aria-hidden="true"></span>`}
+    ${w.organiser?`<span class="wl-org">${esc(w.organiser)}</span>`:""}<h2 class="wl-title">${esc(w.title||"")}</h2>${w.message?`<p class="wl-msg">${esc(w.message)}</p>`:""}
+    ${sp.length?`<div class="wl-sp">${sp.map(s=>`<div class="wl-s"><span class="wl-role">${esc(s.role||"")}</span>${s.logo?`<img src="brand/${esc(s.logo)}" alt="${esc(s.name||"")}">`:`<b>${esc(s.name||"")}</b>`}</div>`).join("")}</div>`:""}
+    <button class="btn pri wl-go" type="button">See live scores</button><div class="wl-bar"><span style="animation-duration:${(+w.seconds||5)}s"></span></div></div>`;
+  document.body.appendChild(el);document.documentElement.classList.add("wl-open");
+  const close=()=>{if(!el.isConnected)return;el.classList.add("out");document.documentElement.classList.remove("wl-open");setTimeout(()=>el.remove(),350);try{sessionStorage.setItem("mc-welcome","1")}catch(e){}};
+  el.querySelector(".wl-go").addEventListener("click",close);
+  if(+w.seconds>0)setTimeout(close,(+w.seconds)*1000);
 }
 function sponsorHtml(){
   const sp=(CFG.sponsors||[]).filter(x=>x&&x.name);if(!sp.length)return"";
@@ -1057,6 +1072,7 @@ document.addEventListener("change",e=>{
 });
 
 render();
+try{welcomeShow()}catch(e){}
 try{boot()}catch(e){fatal="read";loaded={t:true,m:true};render()}
 
 /* exported for tests */
