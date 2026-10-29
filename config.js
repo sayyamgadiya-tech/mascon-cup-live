@@ -21,13 +21,13 @@ window.MASCON_CONFIG = {
     title: "Welcome to the Ahore Mascon Cup 2026",
     message: "Live scores, points table, player stats and the fantasy league, all in one place.",
     sponsors: [
-      { role: "Main sponsor", name: "Mascon", logo: "" },
+      { role: "Title sponsor", name: "Mascon Innovative Lighting", logo: "mascon.png" },
       { role: "Food partner", name: "Food sponsor", logo: "" }
     ],
     seconds: 5
   },
   // Sponsor strip under the header. Add a name, or a logo file placed in this folder (e.g. "mascon.png").
   sponsors: [
-    { name: "Mascon" }
+    { name: "Mascon", logo: "brand/mascon-clear.png" }
   ]
 };

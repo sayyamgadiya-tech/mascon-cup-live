@@ -320,3 +320,10 @@ html.wl-open,html.wl-open body{overflow:hidden}
 .applogo{width:38px;height:38px}
 .brand{gap:8px}
 .brand h1{font-size:clamp(19px,5.6vw,24px);white-space:nowrap}
+.wl-s{grid-column:1/-1}
+.wl-tile{background:#fff;border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:center;width:100%}
+.wl-s .wl-tile img{max-width:100%;height:auto;max-height:90px}
+.wl-s.main .wl-tile img{max-height:110px}
+.sponsors img{height:30px}
+.sponsors img{height:26px;width:auto}
+.sponsors .wrap{padding-block:7px}
