@@ -1,0 +1,22 @@
+name: Admin job
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "real-setup"
+        required: true
+        default: real-setup
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save google-auth-library@9
+      - name: Run
+        run: node .github/workflows/admin.mjs
+        env:
+          KEY: ${{ secrets.KEY }}
+          ACTION: ${{ inputs.action }}
