@@ -10,6 +10,8 @@ window.MASCON_CONFIG = {
   },
   // The scorer account in Firebase Authentication. Its password is the scorer PIN.
   scorerEmail: "scorer@masconcup.app",
+  // Look of the site: "stadium" (navy + light blue), "night" (all dark), "pitch" (green), "charcoal" (black + white)
+  theme: "stadium",
   // Sponsor strip under the header. Add a name, or a logo file placed in this folder (e.g. "mascon.png").
   sponsors: [
     { name: "Mascon" }

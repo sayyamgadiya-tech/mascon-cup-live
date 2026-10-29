@@ -5,6 +5,9 @@ import { initializeFirestore, getFirestore, persistentLocalCache, persistentMult
 /* ================= config ================= */
 const CFG = window.MASCON_CONFIG || {};
 const POOL = window.MASCON_POOL || [];
+// Theme: config.js "theme" (stadium | night | pitch | charcoal); a ?theme= link overrides it for previewing
+(function(){let th=CFG.theme||"stadium";try{const q=new URLSearchParams(location.search).get("theme");if(q)th=q}catch(e){}
+  if(th!=="stadium")document.documentElement.classList.add("th-"+th)})();
 const PRESET = window.MASCON_TEAMS || [];
 const DEF={name:"Ahore Mascon Cup 2026",emergingAge:21,overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
 const STAGES={A:"Group A",B:"Group B",QF1:"Quarter-final 1",QF2:"Quarter-final 2",SF1:"Semi-final 1",SF2:"Semi-final 2",F:"Final"};
@@ -62,6 +65,10 @@ function overTag(overs,n){const s=specials(overs);if(s.pp.includes(n))return"Pow
 /* bowling matrix, five bowlers minimum: 12 ov = 2×3 + 3×2, 10 ov = 5×2, 8 ov = 3×2 + 2×1 */
 function matrix(overs){const max=Math.ceil(overs/5);return{max,atMax:overs-5*(max-1)}}
 
+// Laws: off a no ball or a free hit only run out; off a wide only run out or stumped.
+function allowedOuts(b){if(b.t==="nb"||b.fh)return["ro"];if(b.t==="wd")return["ro","st"];return null}
+function validW(b){if(!b.w)return null;const ok=allowedOuts(b);return ok&&!ok.includes(b.w.k)?null:b.w}
+function invalidW(b){return!!b.w&&!validW(b)}
 const KINDS=[["b","Bowled"],["c","Caught"],["ro","Run out"],["st","Stumped"],["lbw","LBW"],["hw","Hit wicket"],["x","Other"]];
 function dismissal(b){
   const bw=pname(b.bw),f=b.w.f?pname(b.w.f):"";
@@ -81,7 +88,7 @@ function chip(b){
   else if(b.t==="wd"){const n=ballRuns(b);t=(n>1?n:"")+"wd";c="x"}
   else if(b.t==="nb"){t="nb"+(b.r?"+"+b.r:"");c=b.r===4?"f":b.r===6?"s":"x"}
   else{t=b.r+(b.t==="bye"?"b":"lb");c="x"}
-  if(b.w){t="W"+(b.r?"+"+b.r:"");c="w"}
+  if(validW(b)){t="W"+(b.r?"+"+b.r:"");c="w"}
   return`<span class="b ${c}">${esc(t)}</span>`;
 }
 
@@ -106,7 +113,7 @@ function innStats(inn){
     else bw.r+=b.r;
     if(isLegal(b)){st.legal++;bw.l++}
     over.push(b);
-    if(b.w){st.wk++;const o=B(b.w.out);o.out=dismissal(b);if(b.w.k!=="ro"&&b.w.k!=="x")bw.w++;
+    if(validW(b)){st.wk++;const o=B(b.w.out);o.out=dismissal(b);if(b.w.k!=="ro"&&b.w.k!=="x")bw.w++;
       st.fow.push({n:st.wk,r:st.runs,id:b.w.out,ov:ovs(st.legal)})}
     st.log.push({b,lab:Math.floor(before/6)+"."+(before%6+1)});
     if(isLegal(b)&&st.legal%6===0)over=[];
@@ -183,7 +190,7 @@ function fantasyPoints(){
     st.bowlOrder.forEach(id=>{const b=st.bowl[id];add(id,b.w*FP.wkt+(b.w>=3?FP.haul3:0))});
     const overs={};
     inn.balls.forEach(b=>{
-      if(b.w){if(b.w.k==="c"||b.w.k==="st")add(b.w.f,FP.field);if(b.w.k==="ro"&&b.w.f)add(b.w.f,FP.field)}
+      if(validW(b)){if(b.w.k==="c"||b.w.k==="st")add(b.w.f,FP.field);if(b.w.k==="ro"&&b.w.f)add(b.w.f,FP.field)}
       if(b.t==="run"&&b.r===0&&!b.w)add(b.bw,FP.dot);
     });
     // maiden: six legal balls, no runs off bat or extras charged to the bowler
@@ -195,7 +202,7 @@ function fantasyPoints(){
 function mvpTable(filter){
   const pts=fantasyPoints();const{bat,bowl}=tourStats();const field={},mt={};
   Object.values(M).forEach(m=>(m.inn||[]).forEach(inn=>{const seen=new Set();inn.balls.forEach(b=>{[b.s,b.ns,b.bw].forEach(id=>{if(id&&!seen.has(id)){seen.add(id);mt[id]=(mt[id]||new Set());mt[id].add(m.id)}});
-    if(b.w&&b.w.f&&(b.w.k==="c"||b.w.k==="st"||b.w.k==="ro")){field[b.w.f]=(field[b.w.f]||0)+1;mt[b.w.f]=(mt[b.w.f]||new Set());mt[b.w.f].add(m.id)}})}));
+    if(validW(b)&&b.w.f&&(b.w.k==="c"||b.w.k==="st"||b.w.k==="ro")){field[b.w.f]=(field[b.w.f]||0)+1;mt[b.w.f]=(mt[b.w.f]||new Set());mt[b.w.f].add(m.id)}})}));
   return Object.keys(pts).filter(id=>pteam(id)&&(!filter||filter(id))).map(id=>({id,pts:pts[id],r:bat[id]?.r||0,w:bowl[id]?.w||0,f:field[id]||0,m:mt[id]?.size||0})).sort((a,b)=>b.pts-a.pts||b.r-a.r);
 }
 function matchMvp(m){
@@ -203,7 +210,7 @@ function matchMvp(m){
   m.inn.forEach(inn=>{const st=innStats(inn);
     st.batOrder.forEach(id=>{const b=st.bat[id];let p=b.r*FP.run+b.f*FP.four+b.s*FP.six;if(b.r>=50)p+=FP.fifty;else if(b.r>=30)p+=FP.thirty;if(b.out&&b.r===0&&b.b>0)p+=FP.duck;add(id,p)});
     st.bowlOrder.forEach(id=>{const b=st.bowl[id];add(id,b.w*FP.wkt+(b.w>=3?FP.haul3:0))});
-    inn.balls.forEach(b=>{if(b.w&&b.w.f&&(b.w.k==="c"||b.w.k==="st"||b.w.k==="ro"))add(b.w.f,FP.field);if(b.t==="run"&&b.r===0&&!b.w)add(b.bw,FP.dot)});});
+    inn.balls.forEach(b=>{if(validW(b)&&b.w.f&&(b.w.k==="c"||b.w.k==="st"||b.w.k==="ro"))add(b.w.f,FP.field);if(b.t==="run"&&b.r===0&&!b.w)add(b.bw,FP.dot)});});
   const top=Object.entries(pts).sort((a,b)=>b[1]-a[1])[0];return top?{id:top[0],pts:top[1]}:null;
 }
 function fantasyLocked(){return Object.values(M).some(m=>(m.inn||[]).some(i=>i.balls.length>0))}
@@ -409,7 +416,8 @@ function feedText(b){
   else if(b.t==="wd")d="wide"+(b.r?`, ${b.r} run${b.r>1?"s":""} taken`:"");
   else if(b.t==="nb")d="no ball"+(b.r?`, ${b.r===4?"<b class=\"four\">FOUR</b>":b.r===6?"<b class=\"six\">SIX</b>":b.r+" run"+(b.r>1?"s":"")} off the bat`:"");
   else d=`${b.r} ${b.t==="bye"?"bye":"leg bye"}${b.r>1?"s":""}`;
-  if(b.w){const w=b.w,f=w.f?pname(w.f):"";const how=w.k==="c"?(w.f===b.bw?"caught and bowled":f?`caught by ${f}`:"caught"):w.k==="b"?"bowled":w.k==="ro"?(f?`run out by ${f}`:"run out"):w.k==="st"?`stumped${f?" by "+f:""}`:w.k==="lbw"?"lbw":w.k==="hw"?"hit wicket":"out";
+  if(invalidW(b))d+=` <span class="bad">· wicket ignored: ${b.t==="nb"?"no ball":b.fh?"free hit":"wide"}, ${b.t==="wd"?"run out or stumped":"run out"} only</span>`;
+  if(validW(b)){const w=b.w,f=w.f?pname(w.f):"";const how=w.k==="c"?(w.f===b.bw?"caught and bowled":f?`caught by ${f}`:"caught"):w.k==="b"?"bowled":w.k==="ro"?(f?`run out by ${f}`:"run out"):w.k==="st"?`stumped${f?" by "+f:""}`:w.k==="lbw"?"lbw":w.k==="hw"?"hit wicket":"out";
     d=`<b class="outx">OUT</b> ${esc(pname(w.out))} ${esc(how)}${b.r?` (${b.r} run${b.r>1?"s":""} completed)`:""}${b.t==="wd"?" (wide)":b.t==="nb"?" (no ball)":""}`}
   return`${who}, ${d}${b.fh?" · free hit":""}<span class="ns">non-striker ${esc(pname(b.ns))}</span>`;
 }
@@ -418,11 +426,11 @@ function feedHtml(m){
   const blocks=[];
   m.inn.forEach((inn,ii)=>{
     const st=innStats(inn);let runs=0,wk=0,bat={},cur=[],ovNo=1;let scoreAfter=0,wkAfter=0;
-    const flush=(complete)=>{if(!cur.length)return;const bw=cur[0].b.bw;const bs=cur.map(e=>e.b);const ovRuns=bs.reduce((a,b)=>a+ballRuns(b),0),ovWk=bs.filter(b=>b.w).length;
+    const flush=(complete)=>{if(!cur.length)return;const bw=cur[0].b.bw;const bs=cur.map(e=>e.b);const ovRuns=bs.reduce((a,b)=>a+ballRuns(b),0),ovWk=bs.filter(b=>validW(b)).length;
       const lastB=last(cur).b;const batters=[lastB.s,lastB.ns].filter(Boolean).map(id=>{const x=bat[id]||{r:0,b:0};return`${esc(pname(id))} ${x.r} (${x.b})`}).join(" · ");
       const bowlRuns=bs.reduce((a,b)=>a+(b.t==="bye"||b.t==="lb"?0:ballRuns(b)),0);const bowlTot=st.bowl[bw]||{l:0,r:0,w:0};
       blocks.push({ii,ovNo,complete,bw,ovRuns,ovWk,scoreAfter,wkAfter,batters,bowlRuns,bowlTot,balls:cur.slice().reverse(),bat:tmeta(inn.bat).short});cur=[]};
-    inn.balls.forEach((b,idx)=>{const before=st.log[idx];runs+=ballRuns(b);if(b.w)wk++;
+    inn.balls.forEach((b,idx)=>{const before=st.log[idx];runs+=ballRuns(b);if(validW(b))wk++;
       const bt=bat[b.s]||(bat[b.s]={r:0,b:0});if(b.t==="run"||b.t==="nb")bt.r+=b.r;if(b.t!=="wd")bt.b++;
       cur.push(before);scoreAfter=runs;wkAfter=wk;
       const legal=inn.balls.slice(0,idx+1).filter(isLegal).length;if(isLegal(b)&&legal%6===0){flush(true);ovNo=legal/6+1}});
@@ -433,7 +441,7 @@ function feedHtml(m){
   return`<div><div class="label">Ball by ball</div><div class="feed">${recent.map(o=>`
     <div class="ovhead${o.complete?"":" open"}"><div class="ovh1"><span><b>${o.complete?"End of over "+o.ovNo:"Over "+o.ovNo}</b> · ${o.ovRuns} run${o.ovRuns===1?"":"s"}${o.ovWk?` · ${o.ovWk} wkt`:""}</span><b class="sc">${esc(o.bat)} ${o.scoreAfter}/${o.wkAfter}</b></div>
     <div class="ovh2"><span>${o.batters}</span><span>${esc(pname(o.bw))} ${o.bowlTot.w}-${o.bowlTot.r} (${ovs(o.bowlTot.l)})</span></div></div>
-    ${o.balls.map(e=>`<div class="row${e.b.w?" wk":""}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></div>`).join("")}`).join("")}</div>${blocks.length>4?`<p class="kv">Showing the last 4 overs. Full details are in the scorecard.</p>`:""}</div>`;
+    ${o.balls.map(e=>`<div class="row${validW(e.b)?" wk":""}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></div>`).join("")}`).join("")}</div>${blocks.length>4?`<p class="kv">Showing the last 4 overs. Full details are in the scorecard.</p>`:""}</div>`;
 }
 function cardHtml(m,i,open){
   const inn=m.inn[i],st=innStats(inn),live=m.status==="live"&&!inn.closed;
@@ -647,8 +655,10 @@ function otherResultHtml(m){
   <div class="row-btns"><button class="btn sm" data-act="noResult">No result (1 pt each)</button><button class="btn sm" data-act="walkover" data-w="${m.a}">Walkover to ${esc(tname(m.a))}</button><button class="btn sm" data-act="walkover" data-w="${m.b}">Walkover to ${esc(tname(m.b))}</button></div>
   <button class="btn sm warn" data-act="delMatch">Delete this match</button></div></details>`;
 }
+function badBallsBanner(m){const n=m.inn.reduce((a,i)=>a+i.balls.filter(invalidW).length,0);
+  return n?`<div class="confirm"><div><b>${n} wicket${n>1?"s":""} recorded against the rules</b> (for example caught off a no ball). They are not counted. Open <b>Fix an earlier ball</b>, tap the red ball and set it right; check who is at the crease afterwards.</div><button class="btn sm" data-act="sheet" data-k="fix">Fix now</button></div>`:""}
 function padHtml(m){
-  const head=`<div class="row-btns" style="justify-content:space-between;align-items:center"><span class="label">${esc(stageLabel(m))}</span><button class="btn sm" data-act="view" data-id="${m.id}">Audience view</button></div>`;
+  const head=badBallsBanner(m)+`<div class="row-btns" style="justify-content:space-between;align-items:center"><span class="label">${esc(stageLabel(m))}</span><button class="btn sm" data-act="view" data-id="${m.id}">Audience view</button></div>`;
   if(m.status==="scheduled")return head+boardHtml(m)+tossHtml(m)+otherResultHtml(m);
   if(m.status==="setup"||m.status==="break")return head+boardHtml(m)+sheetHtml(m)+openersHtml(m)+(m.status==="break"?`<div class="row-btns"><button class="btn" data-act="undo">Undo last ball of 1st innings</button><button class="btn" data-act="sheet" data-k="fix">Fix an earlier ball</button></div>`:`<button class="btn" data-act="redoToss">Redo toss</button>`)+otherResultHtml(m);
   if(m.status==="super")return head+boardHtml(m)+`<div class="panel"><h2>Super Over result</h2><p class="kv">Each side nominates 3 batters and 1 bowler. The team batting second bats first.</p>
@@ -681,7 +691,7 @@ function fixSheet(m,s,close){
   if(s.idx==null){
     const rows=st.log.slice(-18).reverse();
     return`<div class="sheet"><div class="label">Fix an earlier ball · tap the ball</div>${m.inn.length>1?`<div class="opts">${m.inn.map((x,i)=>`<button class="opt" data-act="fixInn" data-v="${i}" aria-pressed="${i===ii}">${esc(tmeta(x.bat).short)} innings</button>`).join("")}</div>`:""}
-    <div class="feed">${rows.map(e=>{const idx=inn.balls.indexOf(e.b);return`<button class="row fixrow" data-act="fixPick" data-v="${idx}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></button>`}).join("")}</div>${close}</div>`;
+    <div class="feed">${rows.map(e=>{const idx=inn.balls.indexOf(e.b);return`<button class="row fixrow${invalidW(e.b)?" badrow":""}" data-act="fixPick" data-v="${idx}"><span class="ov">${e.lab}</span>${chip(e.b)}<span class="txt">${feedText(e.b)}</span></button>`}).join("")}</div>${close}</div>`;
   }
   const b=inn.balls[s.idx],d=s.d;const bp=xiPlayers(m,inn.bat),wp=xiPlayers(m,inn.bowl);
   const sel=(id,items,lab,v,blank)=>`<div class="field"><label class="label" for="${id}">${lab}</label><select id="${id}" data-fix="${id.slice(3)}">${blank?`<option value="">—</option>`:""}${items.map(p=>`<option value="${p.id}"${p.id===v?" selected":""}>${esc(p.name)}</option>`).join("")}</select></div>`;
@@ -823,6 +833,7 @@ function addBall(p){
   inn.balls.push(b);
   let{s,ns,bw}=inn.cur;
   if(ns&&b.r%2===1)[s,ns]=[ns,s];
+  if(invalidW(b))delete b.w;
   if(b.w){if(s===b.w.out)s=null;else if(ns===b.w.out)ns=null}
   const legal=inn.balls.filter(isLegal).length;
   if(isLegal(b)&&legal%6===0){[s,ns]=[ns,s];bw=null}

@@ -267,3 +267,19 @@ tr.sel td{background:var(--q)}
 :root{color-scheme:light}
 .pk>span:not(.badge){flex:1}
 .pk .badge{flex:none}
+
+.feed .bad{color:var(--out);font-size:12px;font-weight:600}
+.fixrow.badrow{background:rgba(214,54,43,.08);box-shadow:inset 3px 0 0 var(--out)}
+
+/* ===== Theme options (pick one in config.js: theme) ===== */
+/* 1. Night stadium: everything dark, floodlit gold */
+html.th-night{--bg:#0A1324;--surface:#121F38;--line:#22324E;--ink:#EEF2F8;--muted:#9AA8BF;--chip:#1B2A46;--q:#2C2510;
+  --board:#0D1A31;--board2:#173163;--board-ink:#F4F8FF;--board-muted:#93A6C9;--gold:#F6C544;--gold2:#F6C544;color-scheme:dark}
+html.th-night .tcard,html.th-night .mini,html.th-night .mrow,html.th-night .pod,html.th-night .tbl,html.th-night .panel,html.th-night details.card,html.th-night .btn{box-shadow:none}
+html.th-night .pod.r1{background:linear-gradient(180deg,#3A3112,var(--surface))}
+/* 2. Pitch green: turf header and scoreboards on a light field */
+html.th-pitch{--bg:#F2F5EF;--surface:#FFFFFF;--line:#D3DDCC;--ink:#0F2418;--muted:#56695B;--chip:#E2EADB;--q:#FFF3C9;
+  --board:#0C3A23;--board2:#16603A;--board-ink:#F3FAF4;--board-muted:#A8C8B2;--gold:#F6C544;--gold2:#C98E12}
+/* 3. Charcoal and gold: neutral white page, near-black header */
+html.th-charcoal{--bg:#FFFFFF;--surface:#F6F7F9;--line:#E2E5EA;--ink:#14171C;--muted:#5E6673;--chip:#ECEEF1;--q:#FFF4D1;
+  --board:#16191F;--board2:#2A2F38;--board-ink:#F7F8FA;--board-muted:#A7AEB9;--gold:#F2BE3A;--gold2:#C58A0E}
