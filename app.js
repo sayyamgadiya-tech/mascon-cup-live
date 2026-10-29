@@ -12,6 +12,7 @@ const POOL = (KIDS?window.MASCON_KIDS_POOL:window.MASCON_POOL) || [];
 // Theme: config.js "theme" (stadium | night | pitch | charcoal); a ?theme= link overrides it for previewing
 (function(){let th=CFG.theme||"stadium";try{const q=new URLSearchParams(location.search).get("theme");if(q)th=q}catch(e){}
   if(th!=="stadium")document.documentElement.classList.add("th-"+th)})();
+const KSP = window.MASCON_KIDS_SPONSORS || {};
 const PRESET = (KIDS?window.MASCON_KIDS_TEAMS:window.MASCON_TEAMS) || [];
 const DEF={name:KIDS?"Ahore Mascon Cup 2026 Kids":"Ahore Mascon Cup 2026",emergingAge:21,overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
 const STAGES={A:"Group A",B:"Group B",QF1:"Quarter-final 1",QF2:"Quarter-final 2",SF1:"Semi-final 1",SF2:"Semi-final 2",F:"Final"};
@@ -43,7 +44,7 @@ const PALETTE=["#6B21A8","#B91C1C","#0F766E","#111827","#C2410C","#B45309","#1D4
 function tmeta(id){const t=teamOf(id);if(!t)return{name:"TBD",color:"#64748B",logo:"",short:"TBD",initials:"?"};
   const nm=t.name.trim().toUpperCase();const pre=PRESET.find(p=>p.name===nm)||PRESET.find(p=>p.name.split(" ")[0]===nm.split(" ")[0]);const idx=(T.teams.indexOf(t)+10)%10;
   const words=t.name.trim().split(/\s+/);const initials=(words.length>1?words[0][0]+words[words.length-1][0]:t.name.slice(0,2)).toUpperCase();
-  return{name:t.name,color:pre?.color||PALETTE[idx],logo:pre?.logo?"logos/"+pre.logo:"",sponsor:pre?.sponsor||"",short:words[0].length>=5?words[0]:words.slice(0,2).join(" "),initials}}
+  return{name:t.name,color:pre?.color||PALETTE[idx],logo:pre?.logo?"logos/"+pre.logo:"",sponsor:pre?.sponsor||(KIDS?KSP[nm]||"":""),short:words[0].length>=5?words[0]:words.slice(0,2).join(" "),initials}}
 function badge(id,size){const m=tmeta(id);const sz=size||32;
   return m.logo?`<img class="badge" src="${esc(m.logo)}" alt="" width="${sz}" height="${sz}" style="--sz:${sz}px" onerror="this.outerHTML='<span class=badge style=\'--sz:${sz}px;background:${m.color}\'>${esc(m.initials)}</span>'">`
     :`<span class="badge" style="--sz:${sz}px;background:${m.color}">${esc(m.initials)}</span>`}
@@ -681,7 +682,7 @@ function sponsorsBlock(){
   const L=CFG.sponsorList||[];const title=(CFG.welcome?.sponsors||[]).find(s=>s.logo);
   if(!L.length&&!title)return"";
   return`<h2>Our sponsors</h2><div class="spons">${title?`<div class="spg main"><span class="label">${esc(title.role||"Title sponsor")}</span><span class="wl-tile${title.dark?" dark":""}"><img src="brand/${esc(title.logo)}" alt="${esc(title.name||"")}"></span></div>`:""}
-  ${L.map(g=>`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${g.names.map(n=>{const tm=PRESET.find(t=>t.sponsor&&t.sponsor.toLowerCase()===n.toLowerCase());return`<span>${esc(n)}${tm?`<em>${esc(tm.name)}</em>`:""}</span>`}).join("")}</div></div>`).join("")}</div>`;
+  ${L.map(g=>`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${g.names.map(n=>{const tm=(window.MASCON_TEAMS||[]).find(t=>t.sponsor&&t.sponsor.toLowerCase()===n.toLowerCase());const kt=Object.keys(KSP).find(k=>KSP[k].toLowerCase()===n.toLowerCase());const lab=tm?tm.name:kt?kt+" (kids)":"";return`<span>${esc(n)}${lab?`<em>${esc(lab)}</em>`:""}</span>`}).join("")}</div></div>`).join("")}</div>`;
 }
 const RULES=[
  ["Format",["10 teams in 2 groups (A and B) of 5. Each team plays the other 4 in its group: 4 league matches each.","Group toppers go straight to the semi-finals. 2nd and 3rd play the quarter-finals: A2 v B3 and B2 v A3.","All matches, league and knockout, are 12 overs a side.","Win = 2 points. A league tie = 1 point each.","Teams level on points are split by net run rate (runs scored ÷ overs faced − runs conceded ÷ overs bowled). An all-out side counts the full 12 overs."]],
