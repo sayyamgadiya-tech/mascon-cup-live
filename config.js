@@ -21,7 +21,7 @@ window.MASCON_CONFIG = {
     title: "Welcome to the Ahore Mascon Cup 2026",
     message: "Live scores, points table, player stats and the fantasy league, all in one place.",
     sponsors: [
-      { role: "Title sponsor", name: "Mascon Innovative Lighting", logo: "mascon.png" },
+      { role: "Title sponsor", name: "Mascon Innovative Lighting", logo: "mascon-dark.png", dark: true },
       { role: "Food partner", name: "Food sponsor", logo: "" }
     ],
     seconds: 5

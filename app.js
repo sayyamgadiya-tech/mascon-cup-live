@@ -375,7 +375,7 @@ function welcomeShow(){
   const sp=(w.sponsors||[]).filter(s=>s&&(s.name||s.logo));
   el.innerHTML=`<div class="wl-in">${CFG.appLogo?`<img class="wl-logo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark wl-mark" aria-hidden="true"></span>`}
     ${w.organiser?`<span class="wl-org">${esc(w.organiser)}</span>`:""}<h2 class="wl-title">${esc(w.title||"")}</h2>${w.message?`<p class="wl-msg">${esc(w.message)}</p>`:""}
-    ${sp.length?`<div class="wl-sp">${sp.map((s,i)=>`<div class="wl-s${i===0?" main":""}"><span class="wl-role">${esc(s.role||"")}</span>${s.logo?`<span class="wl-tile"><img src="brand/${esc(s.logo)}" alt="${esc(s.name||"")}"></span>`:`<b>${esc(s.name||"")}</b>`}</div>`).join("")}</div>`:""}
+    ${sp.length?`<div class="wl-sp">${sp.map((s,i)=>`<div class="wl-s${i===0?" main":""}"><span class="wl-role">${esc(s.role||"")}</span>${s.logo?`<span class="wl-tile${s.dark?" dark":""}"><img src="brand/${esc(s.logo)}" alt="${esc(s.name||"")}"></span>`:`<b>${esc(s.name||"")}</b>`}</div>`).join("")}</div>`:""}
     <button class="btn pri wl-go" type="button">See live scores</button><div class="wl-bar"><span style="animation-duration:${(+w.seconds||5)}s"></span></div></div>`;
   document.body.appendChild(el);document.documentElement.classList.add("wl-open");
   const close=()=>{if(!el.isConnected)return;el.classList.add("out");document.documentElement.classList.remove("wl-open");setTimeout(()=>el.remove(),350);try{sessionStorage.setItem("mc-welcome","1")}catch(e){}};
