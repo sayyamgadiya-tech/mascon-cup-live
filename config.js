@@ -21,8 +21,9 @@ window.MASCON_CONFIG = {
     title: "Welcome to the Ahore Mascon Cup 2026",
     message: "Live scores, points table, player stats and the fantasy league, all in one place.",
     sponsors: [
-      { role: "Title & cup sponsor", name: "Mascon Innovative Lighting", sub: "Sha Nemichandji Chaganrajji Dugar", logo: "mascon-dark.png", dark: true },
-      { role: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] }
+      { role: "Title sponsor", name: "Mascon Innovative Lighting", sub: "Sha Nemichandji Chaganrajji Dugar", logo: "mascon-dark.png", dark: true },
+      { role: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] },
+      { role: "Jersey sponsor", name: "M/s Avinash Metals" }
     ],
     seconds: 7
   },
