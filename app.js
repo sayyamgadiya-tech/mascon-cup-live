@@ -4,12 +4,16 @@ import { initializeFirestore, getFirestore, persistentLocalCache, persistentMult
 
 /* ================= config ================= */
 const CFG = window.MASCON_CONFIG || {};
-const POOL = window.MASCON_POOL || [];
+// Which tournament: adults (default) or kids (?cup=kids). Kids data lives in k-prefixed collections.
+const KIDS=(()=>{try{return new URLSearchParams(location.search).get("cup")==="kids"}catch(e){return false}})();
+const C=n=>KIDS?"k"+n:n;
+const SK=k=>KIDS?k+"-kids":k;
+const POOL = (KIDS?window.MASCON_KIDS_POOL:window.MASCON_POOL) || [];
 // Theme: config.js "theme" (stadium | night | pitch | charcoal); a ?theme= link overrides it for previewing
 (function(){let th=CFG.theme||"stadium";try{const q=new URLSearchParams(location.search).get("theme");if(q)th=q}catch(e){}
   if(th!=="stadium")document.documentElement.classList.add("th-"+th)})();
-const PRESET = window.MASCON_TEAMS || [];
-const DEF={name:"Ahore Mascon Cup 2026",emergingAge:21,overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
+const PRESET = (KIDS?window.MASCON_KIDS_TEAMS:window.MASCON_TEAMS) || [];
+const DEF={name:KIDS?"Ahore Mascon Cup 2026 Kids":"Ahore Mascon Cup 2026",emergingAge:21,overs:12,xi:11,minXi:9,squad:13,wideRuns:1,nbRuns:1,freeHit:true,noLbw:true,noLegBye:true,ptsWin:2,ptsTie:1,ptsNR:1,teams:[]};
 const STAGES={A:"Group A",B:"Group B",QF1:"Quarter-final 1",QF2:"Quarter-final 2",SF1:"Semi-final 1",SF2:"Semi-final 2",F:"Final"};
 const isLeague=m=>m.stage==="A"||m.stage==="B";
 const LIVE=["live","break","super","setup"];
@@ -22,9 +26,9 @@ let fantasyLockWritten=false;
 let FAN={name:null,all:null,polls:null,at:0};
 try{FAN.name=localStorage.getItem("mc-fan")||null}catch(e){}
 let FT={mine:null,myId:null,all:null,allAt:0,draft:null,q:"",err:""};
-try{FT.myId=localStorage.getItem("mc-fid")||null}catch(e){}
+try{FT.myId=localStorage.getItem(SK("mc-fid"))||null}catch(e){}
 try{const h=location.hash.slice(1);if(["live","matches","table","stats","fantasy","rules"].includes(h))ui.tab=h}catch(e){}
-try{const s=sessionStorage.getItem("mc-score");if(s)ui.scoreSel=s}catch(e){}
+try{const s=sessionStorage.getItem(SK("mc-score"));if(s)ui.scoreSel=s}catch(e){}
 
 /* ================= helpers ================= */
 const $=s=>document.querySelector(s);
@@ -264,7 +268,7 @@ function matchMvp(m){
 function fantasyLocked(){return Object.values(M).some(m=>(m.inn||[]).some(i=>i.balls.length>0))}
 async function loadFantasy(force){
   if(!db)return;const now=Date.now();if(!force&&FT.all&&now-FT.allAt<120000)return;FT.allAt=now;
-  try{const s=await getDocs(collection(db,"fantasy"));FT.all=s.docs.map(d=>({id:d.id,...d.data()}));
+  try{const s=await getDocs(collection(db,C("fantasy")));FT.all=s.docs.map(d=>({id:d.id,...d.data()}));
     if(FT.myId){FT.mine=FT.all.find(t=>t.id===FT.myId)||null}scheduleRender()}catch(e){}
 }
 function fantasyBoard(){
@@ -275,7 +279,7 @@ function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id
 function pAge(id){for(const t of T?.teams||[]){const p=t.players.find(p=>p.id===id);if(p)return p.age||null}return null}
 async function loadFans(force){
   if(!db)return;const now=Date.now();if(!force&&FAN.all&&now-FAN.at<120000)return;FAN.at=now;
-  try{const [f,p]=await Promise.all([getDocs(collection(db,"fans")),getDocs(collection(db,"polls"))]);
+  try{const [f,p]=await Promise.all([getDocs(collection(db,C("fans"))),getDocs(collection(db,C("polls")))]);
     FAN.all={};f.docs.forEach(d=>FAN.all[d.id]=d.data().name||"Fan");FAN.polls={};p.docs.forEach(d=>FAN.polls[d.id]=d.data());scheduleRender()}catch(e){}
 }
 function predictionBoard(){
@@ -334,7 +338,7 @@ async function saveFantasy(){
   if(fantasyLocked()){FT.err="Entries closed: the tournament has started.";render();return}
   if(!uid){FT.err="No connection. Try again in a moment.";render();return}
   const id=uid;
-  try{await setDoc(doc(db,"fantasy",id),{name,p:d.p,uid,at:Date.now()});FT.myId=id;try{localStorage.setItem("mc-fid",id)}catch(e){}
+  try{await setDoc(doc(db,C("fantasy"),id),{name,p:d.p,uid,at:Date.now()});FT.myId=id;try{localStorage.setItem(SK("mc-fid"),id)}catch(e){}
     FT.mine={id,name,p:d.p};FT.draft=null;FT.err="";loadFantasy(true);render()}
   catch(e){FT.err=e?.code==="permission-denied"?"Entries are closed or this name is already taken on another phone.":"Not saved. Check your connection.";render()}
 }
@@ -344,11 +348,12 @@ async function loadPoll(mid,force){
   if(!db)return;const p=polls[mid];
   if(!force&&p&&Date.now()-p.at<60000)return;
   polls[mid]={c:p?.c||{},mine:p?.mine||null,at:Date.now()};
-  try{const s=await getDoc(doc(db,"polls",mid));const d=s.exists()?s.data():{};const c={};
+  try{const s=await getDoc(doc(db,C("polls"),mid));const d=s.exists()?s.data():{};const c={};
     for(const k in d)c[d[k]]=(c[d[k]]||0)+1;
     polls[mid]={c,mine:uid?d[uid]||null:null,at:Date.now()};scheduleRender()}catch(e){}
 }
 function pollHtml(m){
+  if(KIDS)return"";
   if(!db)return"";const p=polls[m.id];if(!p){loadPoll(m.id);return""}
   loadPoll(m.id);
   const ca=p.c[m.a]||0,cb=p.c[m.b]||0,tot=ca+cb,pa=tot?Math.round(ca*100/tot):50;
@@ -365,7 +370,7 @@ async function vote(mid,team){
   const p=polls[mid]||{c:{},mine:null,at:0};
   if(p.mine)p.c[p.mine]=Math.max(0,(p.c[p.mine]||1)-1);
   p.c[team]=(p.c[team]||0)+1;p.mine=team;polls[mid]=p;render();
-  try{await setDoc(doc(db,"polls",mid),{[uid]:team},{merge:true});setDoc(doc(db,"fans",uid),{name:FAN.name,uid},{merge:true}).catch(()=>{});loadPoll(mid,true)}
+  try{await setDoc(doc(db,C("polls"),mid),{[uid]:team},{merge:true});setDoc(doc(db,C("fans"),uid),{name:FAN.name,uid},{merge:true}).catch(()=>{});loadPoll(mid,true)}
   catch(e){flash("Prediction not saved. Voting closes at the first ball.");loadPoll(mid,true)}
 }
 
@@ -374,12 +379,12 @@ function setSync(c,t){syncState={c:"sync"+(c==="err"?" err":""),t};const el=$("#
 const strip=o=>JSON.parse(JSON.stringify(o));
 function saveMatch(m){
   m.upd=Date.now();M[m.id]=m;
-  if(!fantasyLockWritten&&(m.inn||[]).some(i=>i.balls.length)){fantasyLockWritten=true;setDoc(doc(db,"meta","lock"),{at:Date.now()}).catch(()=>{fantasyLockWritten=false})}
-  try{sessionStorage.setItem("mc-score",ui.scoreSel||"")}catch(e){}
+  if(!fantasyLockWritten&&(m.inn||[]).some(i=>i.balls.length)){fantasyLockWritten=true;setDoc(doc(db,C("meta"),"lock"),{at:Date.now()}).catch(()=>{fantasyLockWritten=false})}
+  try{sessionStorage.setItem(SK("mc-score"),ui.scoreSel||"")}catch(e){}
   render();
-  setDoc(doc(db,"matches",m.id),strip(m)).catch(e=>{setSync("err",e?.code==="permission-denied"?"Not saved: log in again":"Not saved");if(e?.code==="permission-denied"){canScore=false;render()}});
+  setDoc(doc(db,C("matches"),m.id),strip(m)).catch(e=>{setSync("err",e?.code==="permission-denied"?"Not saved: log in again":"Not saved");if(e?.code==="permission-denied"){canScore=false;render()}});
 }
-function delMatchDoc(id){deleteDoc(doc(db,"matches",id)).catch(()=>setSync("err","Delete failed"));deleteDoc(doc(db,"polls",id)).catch(()=>{})}
+function delMatchDoc(id){deleteDoc(doc(db,C("matches"),id)).catch(()=>setSync("err","Delete failed"));deleteDoc(doc(db,C("polls"),id)).catch(()=>{})}
 
 function boot(){
   if(!CFG.firebase||!CFG.firebase.apiKey||CFG.firebase.apiKey==="PASTE_HERE"){fatal="config";loaded={t:true,m:true};render();return}
@@ -393,8 +398,8 @@ function boot(){
     if(!canScore&&(ui.tab==="score"||ui.tab==="setup"))ui.tab="live";
     render();
   });
-  onSnapshot(doc(db,"tournament","main"),s=>{T=s.exists()?{...DEF,...s.data()}:null;loaded.t=true;scheduleRender()},e=>{fatal="read";scheduleRender()});
-  onSnapshot(collection(db,"matches"),{includeMetadataChanges:true},s=>{
+  onSnapshot(doc(db,C("tournament"),"main"),s=>{T=s.exists()?{...DEF,...s.data()}:null;loaded.t=true;scheduleRender()},e=>{fatal="read";scheduleRender()});
+  onSnapshot(collection(db,C("matches")),{includeMetadataChanges:true},s=>{
     const next={};s.docs.forEach(d=>next[d.id]=d.data());M=next;loaded.m=true;
     if(canScore){if(s.metadata.hasPendingWrites)setSync("",navigator.onLine?"Saving…":"Offline · saved on this phone");else if(!s.metadata.fromCache)setSync("","Synced")}
     scheduleRender();
@@ -408,11 +413,12 @@ addEventListener("offline",()=>canScore&&setSync("","Offline · saved on this ph
 
 /* ================= views ================= */
 function headerHtml(){
-  const t=[["live","Live"],["matches","Matches"],["table","Table"],["stats","Stats"],["fantasy","Fantasy"],["rules","Rules"]];
+  const t=KIDS?[["live","Live"],["matches","Matches"],["table","Table"],["stats","Stats"]]:[["live","Live"],["matches","Matches"],["table","Table"],["stats","Stats"],["fantasy","Fantasy"],["rules","Rules"]];
   if(canScore){t.push(["score","Score"]);t.push(["setup","Setup"])}
-  const nm=(T?.name||DEF.name).replace(/\s*\(DEMO\)\s*/i,"");const demo=/DEMO/i.test(T?.name||"");
+  const nm=(T?.name||DEF.name).replace(/\s*\(DEMO\)\s*/i,"").replace(/\s*kids\s*$/i,"");const demo=/DEMO/i.test(T?.name||"");
   const parts=nm.split(/\s+/);const eyebrow=parts.length>2?parts[0]:"";const main=parts.length>2?parts.slice(1).join(" "):nm;
-  return`<div class="wrap"><div class="brand">${CFG.appLogo?`<img class="applogo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark" aria-hidden="true"></span>`}<h1>${eyebrow?`<small>${esc(eyebrow)}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
+  return`<div class="wrap"><div class="brand">${CFG.appLogo?`<img class="applogo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark" aria-hidden="true"></span>`}<h1>${eyebrow?`<small>${esc(eyebrow)}${KIDS?" · KIDS":""}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
+  <div class="cupsw" role="tablist" aria-label="Tournament"><a href="${location.pathname}" aria-current="${!KIDS}">Adults</a><a href="${location.pathname}?cup=kids" aria-current="${KIDS}">Kids</a></div>
   <nav class="tabs" aria-label="Sections">${t.map(([k,l])=>`<button data-act="tab" data-v="${k}" aria-current="${ui.tab===k}">${l}</button>`).join("")}</nav></div>${sponsorHtml()}`;
 }
 function welcomeShow(){
@@ -530,7 +536,7 @@ function shareText(m){
   if(m.result)lines.push(`*${m.result}*`);
   const mv=m.status==="done"?matchMvp(m):null;if(mv)lines.push(`Player of the match: ${pname(mv.id)}`);
   if(m.status==="live"){const i=m.inn.length-1,st=innStats(m.inn[i]);const tg=targetOf(m);if(tg)lines.push(`Need ${tg-st.runs} from ${ovFor(m,i)*6-st.legal} balls`)}
-  if(typeof location!=="undefined"&&location.origin)lines.push(location.origin+location.pathname);return lines.join("\n");
+  if(typeof location!=="undefined"&&location.origin)lines.push(location.origin+location.pathname+(KIDS?"?cup=kids":""));return lines.join("\n");
 }
 function shareBtn(m){return`<a class="btn sm wa" href="https://wa.me/?text=${encodeURIComponent(shareText(m))}" target="_blank" rel="noopener">Share on WhatsApp</a>`}
 function msStrip(m){const l=milestones(m);if(!l.length)return"";
@@ -545,11 +551,11 @@ function champion(){const f=Object.values(M).find(m=>m.stage==="F"&&m.status==="
 function miniTable(g){const rows=pointsTable(g).slice(0,5);if(!rows.length||!rows.some(r=>r.p))return"";
   return`<div class="mini"><div class="label">Group ${g}</div>${rows.map((r,i)=>`<div class="mr${i<3?" q":""}" data-act="team" data-id="${r.id}">${badge(r.id,22)}<span class="tn">${esc(tmeta(r.id).short)}</span><span class="muted">${r.p}</span><b>${r.pts}</b><span class="nrr">${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</span></div>`).join("")}</div>`}
 function topCards(){const{bat,bowl}=tourStats();const b=Object.entries(bat).sort((a,b)=>b[1].r-a[1].r)[0],w=Object.entries(bowl).sort((a,b)=>b[1].w-a[1].w||a[1].r-b[1].r)[0];
-  const mv=mvpTable()[0],em=mvpTable(id=>{const g=pAge(id);return g&&g<=(T.emergingAge||DEF.emergingAge)})[0];
+  const mv=mvpTable()[0],em=KIDS?null:mvpTable(id=>{const g=pAge(id);return g&&g<=(T.emergingAge||DEF.emergingAge)})[0];
   if(!b)return"";const card=(lab,id,val,unit,stat)=>`<button class="tcard" data-act="statTab" data-v="${stat}">${badge(pteam(id),30)}<span class="lab">${lab}</span><b>${esc(pname(id))}</b><span class="val">${val}<small> ${unit}</small></span></button>`;
   return`<div class="label">Leading the tournament</div><div class="tcards">${mv?card("MVP",mv.id,mv.pts,"pts","mvp"):""}${em?card("Emerging player",em.id,em.pts,"pts","emerging"):""}${card("Most runs",b[0],b[1].r,"runs","runs")}${w?card("Most wickets",w[0],w[1].w,"wkts","wkts"):""}</div>`}
 function liveView(){
-  if(!T)return`<section><div class="empty"><strong>Scores start on 29 November</strong>${canScore?"Open Setup to add the ten teams and their squads.":"Live scores, scorecards, the points table and player stats appear here once the tournament begins."}</div></section>`;
+  if(!T)return`<section><div class="empty"><strong>${KIDS?"Kids' matches will show here":"Scores start on 29 November"}</strong>${canScore?"Open Setup to add the ten teams and their squads.":"Live scores, scorecards, the points table and player stats appear here once the tournament begins."}</div></section>`;
   const list=Object.values(M);
   const live=list.filter(m=>LIVE.includes(m.status)).sort((a,b)=>(b.upd||0)-(a.upd||0));
   const m=(ui.sel&&M[ui.sel])||live[0];
@@ -606,7 +612,7 @@ function podium(rows,lab){
 function statsView(){
   if(!T)return liveView();
   const{bat,bowl}=tourStats();
-  const chips=[["mvp","MVP"],["emerging","Emerging"],["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"],["fours","Most fours"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
+  const chips=[["mvp","MVP"],...(KIDS?[]:[["emerging","Emerging"]]),["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"],["fours","Most fours"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
   const nm=id=>`<td class="n"><span class="tl" data-act="player" data-id="${id}">${badge(pteam(id),24)}<span class="tn"><b>${esc(pname(id))}</b><span class="how">${esc(tmeta(pteam(id)).short)}${pAge(id)?" · "+pAge(id):""}</span></span></span></td>`;
   let body="",head="",note="";
   if(ui.stat==="mvp"||ui.stat==="emerging"){
@@ -689,7 +695,7 @@ const RULES=[
  ["Conduct",["Sponsors and captains are requested to have every player field at least 6 overs in at least one match.","The umpire's decision is final. Only the captain may raise a dispute, calmly, with the umpires and organisers. Dissent or bad behaviour means a ban for the rest of the tournament.","The organisers may change any rule, including the overs per match, if required."]]
 ];
 function rulesView(){
-  return`<section><h2>Rules and regulations</h2>${RULES.map(([h,l],i)=>`<details class="card"${i<2?" open":""}><summary><span>${esc(h)}</span></summary><div class="in"><ul class="rules">${l.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div></details>`).join("")}
+  return`<section><h2>Rules and regulations</h2>${KIDS?`<div class="panel"><b>Kids tournament</b><span class="kv">The kids' rules will be posted here. The adults' rules below are for reference.</span></div>`:""}${RULES.map(([h,l],i)=>`<details class="card"${i<2?" open":""}><summary><span>${esc(h)}</span></summary><div class="in"><ul class="rules">${l.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div></details>`).join("")}
   <div class="panel"><div class="label">For further details</div><div class="row-btns"><a class="btn sm" href="tel:+919844142007">Rahul Dantewadia · 98441 42007</a><a class="btn sm" href="tel:+919844026175">Kalpesh Sonwadia · 98440 26175</a></div></div>
   ${sponsorsBlock()}</section>`;
 }
@@ -940,16 +946,16 @@ function setupView(){
   const squadsReady=T&&T.teams.length>=2&&T.teams.every(t=>t.players.length>=DEF.minXi);
   const hasFixtures=league.length>0;
   return`<section>${confirmHtml()}
-  <div class="panel"><h2>Quick start</h2>
+  ${KIDS?`<div class="panel"><h2>Kids tournament</h2><p class="kv">This is the separate kids section. Nothing here touches the adults' tournament. Set the overs and rules under Tournament, name the teams and add players under Teams and squads, save, then create the fixtures.</p>${T?`<div class="row-btns"><button class="btn warn" data-act="reset">Delete all kids data</button></div>`:""}<div id="qs-msg"></div></div>`:`<div class="panel"><h2>Quick start</h2>
   <div class="row-btns"><button class="btn pri" data-act="realSetup"${hasFixtures&&!T?.name?.includes("DEMO")?" disabled":""}>Set up the real tournament</button><button class="btn" data-act="loadDemo">Load demo tournament</button>${T?`<button class="btn warn" data-act="reset">Delete everything</button>`:""}</div>
   <p class="kv"><b>Real tournament:</b> the 10 franchises with their icons, in groups, plus all 20 league fixtures. Players are added from the Auction pool below after 1 November.<br><b>Demo:</b> a full simulated tournament with fake scores and fantasy entries, for trying every screen. Delete it before the real setup.</p>
-  <div id="qs-msg"></div></div>
+  <div id="qs-msg"></div></div>`}
   <div class="panel"><h2>Tournament</h2>
   <div class="field"><label class="label" for="st-name">Name</label><input id="st-name" value="${esc(d.name)}" data-bind="name"></div>
   <div class="grid2">
    <div class="field"><label class="label" for="st-wideRuns">Runs for a wide</label><input id="st-wideRuns" type="number" min="0" max="2" value="${d.wideRuns}" data-bind="wideRuns"></div>
    <div class="field"><label class="label" for="st-nbRuns">Runs for a no ball</label><input id="st-nbRuns" type="number" min="0" max="2" value="${d.nbRuns}" data-bind="nbRuns"></div></div>
-  <p class="kv">From the rules sheet: 12 overs a side, 11 play from a 13-player squad (minimum 9 at the toss), free hit on every no ball, no LBW, no leg byes, win 2 pts, tie or no result 1 pt each, Super Over for knockout ties.</p></div>
+  ${KIDS?`<p class="kv">Kids: set the overs for each match at the toss (the scorer picks overs there). Bowling limits follow the adults' matrix for that many overs; tell the organisers if the kids' rules differ.</p>`:`<p class="kv">From the rules sheet: 12 overs a side, 11 play from a 13-player squad (minimum 9 at the toss), free hit on every no ball, no LBW, no leg byes, win 2 pts, tie or no result 1 pt each, Super Over for knockout ties.</p>`}</div>
   ${poolPanel(d)}
   <details class="card"><summary><span>Import teams and squads from text</span><span class="muted small">paste a list</span></summary><div class="in">
   <p class="kv">Paste one block per team: a line starting <b>Team</b>, then <b>Icon</b>, then player names one per line. Group is set by the order (first five = A). Players added to a team already in the list are merged by name.</p>
@@ -994,6 +1000,7 @@ function render(){
   if(fatal==="read"&&!loaded.m){app.innerHTML=`<section><div class="empty"><strong>Can't reach the scoreboard</strong>Check your connection and reload the page.</div></section>`;return}
   if(!loaded.t||!loaded.m){app.innerHTML=`<section><div class="empty"><strong>Loading scores…</strong>Connecting to the scoreboard.</div></section>`;return}
   if(!canScore&&(ui.tab==="score"||ui.tab==="setup"))ui.tab="live";
+  if(KIDS&&(ui.tab==="fantasy"||ui.tab==="rules"||(ui.tab==="stats"&&ui.stat==="emerging"))){ui.tab=ui.tab==="stats"?"stats":"live";ui.stat="mvp"}
   const v={rules:rulesView,player:playerView,matches:matchesView,table:tableView,stats:statsView,fantasy:fantasyView,team:teamView,score:scoreView,setup:setupView,login:loginView}[ui.tab]||liveView;
   app.innerHTML=v();
 }
@@ -1040,15 +1047,15 @@ const acts={
   stat:el=>{ui.stat=el.dataset.v;render()},
   statTab:el=>{ui.stat=el.dataset.v;ui.tab="stats";render();scrollTo(0,0)},
   fopen:el=>{ui.fopen=ui.fopen===el.dataset.id?null:el.dataset.id;render();const p=$(".pickpanel");if(p)p.scrollIntoView({block:"nearest"})},
-  fanSave:()=>{const v=($("#fan-name")?.value||"").trim();if(v.length<2){flash("Enter at least 2 characters.");return}FAN.name=v;try{localStorage.setItem("mc-fan",v)}catch(e){}if(uid&&db)setDoc(doc(db,"fans",uid),{name:v,uid},{merge:true}).catch(()=>{});render()},
+  fanSave:()=>{const v=($("#fan-name")?.value||"").trim();if(v.length<2){flash("Enter at least 2 characters.");return}FAN.name=v;try{localStorage.setItem("mc-fan",v)}catch(e){}if(uid&&db)setDoc(doc(db,C("fans"),uid),{name:v,uid},{merge:true}).catch(()=>{});render()},
   fNew:()=>{FT.draft={name:FAN.name||"",p:[]};FT.q="";FT.err="";render()},
   fEdit:()=>{FT.draft={name:FT.mine.name,p:[...FT.mine.p]};FT.q="";FT.err="";render()},
   fCancel:()=>{FT.draft=null;render()},
   fTog:el=>{const d=FT.draft;const i=d.p.indexOf(el.dataset.id);if(i>=0)d.p.splice(i,1);else if(d.p.length<13)d.p.push(el.dataset.id);render()},
   fSave:()=>saveFantasy(),
-  fForget:()=>{FT.myId=null;FT.mine=null;try{localStorage.removeItem("mc-fid")}catch(e){}render()},
+  fForget:()=>{FT.myId=null;FT.mine=null;try{localStorage.removeItem(SK("mc-fid"))}catch(e){}render()},
   vote:el=>vote(el.dataset.m,el.dataset.t),
-  ssel:el=>{ui.scoreSel=el.dataset.id;ui.sheet=null;ui.toss=null;pendingConfirm=null;try{sessionStorage.setItem("mc-score",ui.scoreSel)}catch(e){}render()},
+  ssel:el=>{ui.scoreSel=el.dataset.id;ui.sheet=null;ui.toss=null;pendingConfirm=null;try{sessionStorage.setItem(SK("mc-score"),ui.scoreSel)}catch(e){}render()},
   newMatch:()=>{ui.scoreSel="new";const[a,b]=suggest("QF1");ui.nm={stage:"QF1",a:a||T.teams[0].id,b:b||T.teams[1].id};render()},
   createMatch:()=>{const nm=ui.nm;if(!nm||nm.a===nm.b)return;
     const no=Math.max(0,...Object.values(M).map(m=>m.no||0))+1;
@@ -1102,7 +1109,7 @@ const acts={
   walkover:el=>{const w=el.dataset.w;ask(`Award a walkover to ${tname(w)}?`,"Award walkover",()=>endWith(curMatch(),w,`${tname(w)} won by walkover`,"wo"))},
   superWin:el=>{const m=curMatch(),w=el.dataset.w;m.super=($("#so-score")?.value||"").trim();endWith(m,w,`${tname(w)} won the Super Over`,"super")},
   delMatch:()=>ask(`Delete ${stageLabel(M[ui.scoreSel]||{})}? Its scores are removed for everyone.`,"Delete match",()=>{const id=ui.scoreSel;delete M[id];ui.scoreSel=null;if(ui.sel===id)ui.sel=null;render();delMatchDoc(id);
-    if(!fantasyLocked()){fantasyLockWritten=false;deleteDoc(doc(db,"meta","lock")).catch(()=>{})}}),
+    if(!fantasyLocked()){fantasyLockWritten=false;deleteDoc(doc(db,C("meta"),"lock")).catch(()=>{})}}),
   confirmYes:()=>{const f=pendingConfirm?.fn;pendingConfirm=null;if(f)f();else render()},
   confirmNo:()=>{pendingConfirm=null;render()},
   importTeams:()=>{
@@ -1130,7 +1137,7 @@ const acts={
   schedAuto:()=>{const sc=ui.sched;const list=Object.values(M).sort(byNo);const lg=list.filter(isLeague),ko=list.filter(m=>!isLeague(m));
     const mk=(date,i)=>{const [h,mi]=sc.start.split(":").map(Number);const d=new Date(`${date}T00:00`);d.setMinutes(h*60+mi+i*(+sc.mins||75));return d.toISOString()};
     ui.schedDraft={};lg.forEach((m,i)=>{ui.schedDraft[m.id]=i<10?mk(sc.d1,i):mk(sc.d2,i-10)});ko.forEach((m,i)=>ui.schedDraft[m.id]=mk(sc.d3,i));render()},
-  schedSave:async()=>{const d=ui.schedDraft||{};const b=writeBatch(db);let n=0;Object.values(M).forEach(m=>{const v=d[m.id];if(v!==undefined&&v!==(m.when||"")){const w=v?new Date(v).toISOString():null;const mm={...m};if(w)mm.when=w;else delete mm.when;M[m.id]=mm;b.set(doc(db,"matches",m.id),strip(mm));n++}});
+  schedSave:async()=>{const d=ui.schedDraft||{};const b=writeBatch(db);let n=0;Object.values(M).forEach(m=>{const v=d[m.id];if(v!==undefined&&v!==(m.when||"")){const w=v?new Date(v).toISOString():null;const mm={...m};if(w)mm.when=w;else delete mm.when;M[m.id]=mm;b.set(doc(db,C("matches"),m.id),strip(mm));n++}});
     try{await b.commit();ui.schedDraft=null;render();flashAt("sc-msg",`${n} match${n===1?"":"es"} updated.`,true)}catch(e){flashAt("sc-msg","Not saved. Check your connection.")}},
   addTeam:()=>{ui.draft.teams.push({id:uidGen("t"),name:"",group:"B",players:Array.from({length:DEF.squad},()=>({id:uidGen("p"),name:""}))});render()},
   delTeam:el=>{ui.draft.teams=ui.draft.teams.filter(t=>t.id!==el.dataset.id);render()},
@@ -1144,11 +1151,11 @@ const acts={
     const bad=d.teams.length<2?"Add at least two teams with names.":d.teams.find(t=>!t.name)?"Every team needs a name.":(short&&started)?`${short.name} needs at least ${DEF.minXi} players.`:"";
     if(bad){flash(bad);return}
     T=d;ui.draft=clone(d);
-    setDoc(doc(db,"tournament","main"),strip(d)).then(()=>flash(short?`Saved. ${short.name} has under ${DEF.minXi} players; finish the squads before match day.`:"Saved. Everyone sees these teams now.",true)).catch(e=>flash(e?.code==="permission-denied"?"Not saved: log in as scorer again.":"Not saved. Check your connection."));
+    setDoc(doc(db,C("tournament"),"main"),strip(d)).then(()=>flash(short?`Saved. ${short.name} has under ${DEF.minXi} players; finish the squads before match day.`:"Saved. Everyone sees these teams now.",true)).catch(e=>flash(e?.code==="permission-denied"?"Not saved: log in as scorer again.":"Not saved. Check your connection."));
     render();flash("Saving…",true)},
   fixtures:()=>{const rr={A:roundRobin(T.teams.filter(t=>t.group==="A").map(t=>t.id)),B:roundRobin(T.teams.filter(t=>t.group==="B").map(t=>t.id))};
     let no=Math.max(0,...Object.values(M).map(m=>m.no||0));const rounds=Math.max(rr.A.length,rr.B.length);const batch=writeBatch(db);
-    for(let r=0;r<rounds;r++)for(const g of["A","B"])for(const[a,b]of rr[g][r]||[]){const m={id:uidGen("m"),no:++no,stage:g,a,b,status:"scheduled",inn:[],result:"",winner:null,overs:T.overs,upd:Date.now()};M[m.id]=m;batch.set(doc(db,"matches",m.id),m)}
+    for(let r=0;r<rounds;r++)for(const g of["A","B"])for(const[a,b]of rr[g][r]||[]){const m={id:uidGen("m"),no:++no,stage:g,a,b,status:"scheduled",inn:[],result:"",winner:null,overs:T.overs,upd:Date.now()};M[m.id]=m;batch.set(doc(db,C("matches"),m.id),m)}
     batch.commit().catch(()=>flash("Fixtures not saved. Check your connection."));render();flash(`${no} league matches created. Find them under Score and Matches.`,true)},
   changePin:async()=>{const cur=$("#pin-cur").value,nw=$("#pin-new").value;
     if(nw.length<6){flash("The new PIN needs at least 6 digits.");return}
@@ -1156,32 +1163,32 @@ const acts={
     catch(e){flash(e?.code==="auth/wrong-password"||e?.code==="auth/invalid-credential"?"Current PIN is wrong.":"PIN not changed. Try again.")}},
   logout:()=>{signOut(auth);ui.tab="live";render()},
   reset:()=>ask("Delete the tournament, all teams, every match, all predictions and all fantasy teams? This cannot be undone.","Delete everything",async()=>{
-    try{const batch=writeBatch(db);Object.keys(M).forEach(id=>{batch.delete(doc(db,"matches",id));batch.delete(doc(db,"polls",id))});batch.delete(doc(db,"tournament","main"));batch.delete(doc(db,"meta","lock"));
-      const fs=await getDocs(collection(db,"fantasy"));const fn=await getDocs(collection(db,"fans"));let b2=batch,n=0;const extra=[];
+    try{const batch=writeBatch(db);Object.keys(M).forEach(id=>{batch.delete(doc(db,C("matches"),id));batch.delete(doc(db,C("polls"),id))});batch.delete(doc(db,C("tournament"),"main"));batch.delete(doc(db,C("meta"),"lock"));
+      const fs=await getDocs(collection(db,C("fantasy")));const fn=await getDocs(collection(db,C("fans")));let b2=batch,n=0;const extra=[];
       [...fs.docs,...fn.docs].forEach(d=>{if(n++>=400){b2=writeBatch(db);extra.push(b2);n=1}b2.delete(d.ref)});
       await batch.commit();for(const b of extra)await b.commit();
       fantasyLockWritten=false;M={};T=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;FT.all=null;FT.mine=null;render();flash("Everything deleted.",true)}
     catch(e){flash("Not fully deleted. Check your connection and try again.")}}),
   realSetup:()=>ask(T?"Replace the current teams and matches with the real tournament setup (10 franchises, icons, 20 fixtures)? Scores and fantasy entries are deleted.":"Set up the real tournament now? 10 franchises with icons and 20 league fixtures.","Set up",async()=>{
     flashAt("qs-msg","Setting up…",true);
-    try{const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,"matches",id));wipe.delete(doc(db,"polls",id))});wipe.delete(doc(db,"meta","lock"));
-      const fs=await getDocs(collection(db,"fantasy"));fs.docs.forEach(x=>wipe.delete(x.ref));await wipe.commit();
+    try{const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,C("matches"),id));wipe.delete(doc(db,C("polls"),id))});wipe.delete(doc(db,C("meta"),"lock"));
+      const fs=await getDocs(collection(db,C("fantasy")));fs.docs.forEach(x=>wipe.delete(x.ref));await wipe.commit();
       const d={...clone(DEF),teams:blankTeams()};d.teams=d.teams.map(t=>({id:t.id,name:t.name,group:t.group,players:t.players.filter(p=>p.name)}));
-      const b=writeBatch(db);b.set(doc(db,"tournament","main"),strip(d));
+      const b=writeBatch(db);b.set(doc(db,C("tournament"),"main"),strip(d));
       const rr={A:roundRobin(d.teams.filter(t=>t.group==="A").map(t=>t.id)),B:roundRobin(d.teams.filter(t=>t.group==="B").map(t=>t.id))};let no=0;
-      for(let r=0;r<Math.max(rr.A.length,rr.B.length);r++)for(const g of["A","B"])for(const[a,bb]of rr[g][r]||[]){const mid=uidGen("m");b.set(doc(db,"matches",mid),{id:mid,no:++no,stage:g,a,b:bb,status:"scheduled",inn:[],result:"",winner:null,overs:d.overs,upd:Date.now()})}
+      for(let r=0;r<Math.max(rr.A.length,rr.B.length);r++)for(const g of["A","B"])for(const[a,bb]of rr[g][r]||[]){const mid=uidGen("m");b.set(doc(db,C("matches"),mid),{id:mid,no:++no,stage:g,a,b:bb,status:"scheduled",inn:[],result:"",winner:null,overs:d.overs,upd:Date.now()})}
       await b.commit();fantasyLockWritten=false;FT.all=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;render();flashAt("qs-msg",`Done: 10 teams and ${no} league fixtures created. Assign players from the Auction pool after 1 November.`,true)}
     catch(e){flashAt("qs-msg","Setup failed. Check your connection and try again.")}}),
   loadDemo:()=>ask("Load the demo tournament? This replaces everything currently saved (teams, matches, predictions, fantasy teams) with simulated data.","Load demo",async()=>{
     flashAt("qs-msg","Loading demo…",true);
     try{const r=await fetch("demo.json",{cache:"no-store"});if(!r.ok)throw new Error("fetch");const d=await r.json();
       // wipe first
-      const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,"matches",id));wipe.delete(doc(db,"polls",id))});wipe.delete(doc(db,"meta","lock"));
-      const fs=await getDocs(collection(db,"fantasy"));fs.docs.forEach(x=>wipe.delete(x.ref));await wipe.commit();
-      const b=writeBatch(db);b.set(doc(db,"tournament","main"),d.tournament);
-      Object.values(d.matches).forEach(m=>b.set(doc(db,"matches",m.id),{...m,upd:Date.now()}));
-      (d.fantasy||[]).forEach(f=>b.set(doc(db,"fantasy",f.id),{name:f.name,p:f.p,uid:f.uid,at:Date.now(),demo:true}));
-      b.set(doc(db,"meta","lock"),{at:Date.now(),demo:true});
+      const wipe=writeBatch(db);Object.keys(M).forEach(id=>{wipe.delete(doc(db,C("matches"),id));wipe.delete(doc(db,C("polls"),id))});wipe.delete(doc(db,C("meta"),"lock"));
+      const fs=await getDocs(collection(db,C("fantasy")));fs.docs.forEach(x=>wipe.delete(x.ref));await wipe.commit();
+      const b=writeBatch(db);b.set(doc(db,C("tournament"),"main"),d.tournament);
+      Object.values(d.matches).forEach(m=>b.set(doc(db,C("matches"),m.id),{...m,upd:Date.now()}));
+      (d.fantasy||[]).forEach(f=>b.set(doc(db,C("fantasy"),f.id),{name:f.name,p:f.p,uid:f.uid,at:Date.now(),demo:true}));
+      b.set(doc(db,C("meta"),"lock"),{at:Date.now(),demo:true});
       await b.commit();fantasyLockWritten=true;FT.all=null;ui.draft=null;ui.scoreSel=null;ui.sel=null;ui.tab="live";render();flash("Demo loaded.",true)}
     catch(e){flashAt("qs-msg",e?.code==="permission-denied"?"Demo not loaded: paste the latest firestore.rules into Firebase first.":"Demo not loaded. Check your connection.")}}),
 };
@@ -1220,7 +1227,7 @@ document.addEventListener("change",e=>{
     if(t.value){const tm=d.teams.find(x=>x.id===t.value);const slot=tm.players.find(p=>!p.name.trim());const np={id:slot?slot.id:uidGen("p"),name:P.name,reg:P.reg,role:P.role,age:P.age};if(slot)Object.assign(slot,np);else tm.players.push(np)}
     const sc=scrollY;render();scrollTo(0,sc);return}
   if(t.dataset.poolall){ui.poolAll=t.checked;render();return}
-  if(t.dataset.donesel){if(t.value){ui.scoreSel=t.value;ui.sheet=null;ui.toss=null;pendingConfirm=null;try{sessionStorage.setItem("mc-score",t.value)}catch(e){}render()}return}
+  if(t.dataset.donesel){if(t.value){ui.scoreSel=t.value;ui.sheet=null;ui.toss=null;pendingConfirm=null;try{sessionStorage.setItem(SK("mc-score"),t.value)}catch(e){}render()}return}
   if(t.dataset.tgroup&&ui.draft){ui.draft.teams.find(x=>x.id===t.dataset.tgroup).group=t.value;t.blur();render()}
   if(t.dataset.nm&&ui.nm){ui.nm[t.dataset.nm]=t.value;if(t.dataset.nm==="stage"){const[a,b]=suggest(t.value);if(a)ui.nm.a=a;if(b)ui.nm.b=b}t.blur();render()}
   if(t.dataset.tz&&ui.toss){ui.toss[t.dataset.tz]=t.value;t.blur();render()}

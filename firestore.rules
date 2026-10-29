@@ -63,6 +63,64 @@ service cloud.firestore {
       allow write: if isScorer();
     }
 
+    // ===== Kids tournament: same rules on k-prefixed collections =====
+    function kMatchData(mid) {
+      return get(/databases/$(database)/documents/kmatches/$(mid)).data;
+    }
+    // Teams, squads and settings: everyone reads, only the scorer writes
+    match /ktournament/{docId} {
+      allow read: if true;
+      allow write: if isScorer();
+    }
+
+    // Matches with every ball: everyone reads, only the scorer writes
+    match /kmatches/{mid} {
+      allow read: if true;
+      allow write: if isScorer();
+    }
+
+    // Fan predictions: one field per fan (their anonymous id) on one document per match.
+    // A fan may set only their own pick, only for one of the two teams, only before the first ball.
+    match /kpolls/{mid} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly([request.auth.uid])
+        && kMatchData(mid).status in ['scheduled', 'setup']
+        && request.resource.data[request.auth.uid] in [kMatchData(mid).a, kMatchData(mid).b];
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid])
+        && kMatchData(mid).status in ['scheduled', 'setup']
+        && request.resource.data[request.auth.uid] in [kMatchData(mid).a, kMatchData(mid).b];
+      allow delete: if isScorer();
+    }
+
+    // Fantasy teams: one document per phone (anonymous uid). Name + exactly 13 player ids.
+    // Anyone can read (leaderboard). Create/update only by that same phone, only before the first ball.
+    function kNoBallBowled() {
+      return !exists(/databases/$(database)/documents/kmeta/lock);
+    }
+    match /kfantasy/{fid} {
+      allow read: if true;
+      allow create, update: if isScorer() || (request.auth != null && fid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 30
+        && request.resource.data.p is list && request.resource.data.p.size() == 13
+        && kNoBallBowled());
+      allow delete: if isScorer();
+    }
+    // Prediction-league names: each phone writes its own, everyone reads
+    match /kfans/{fid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && fid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 30;
+      allow delete: if isScorer();
+    }
+    match /kmeta/{docId} {
+      allow read: if true;
+      allow write: if isScorer();
+    }
+
+
     match /{document=**} {
       allow read, write: if false;
     }

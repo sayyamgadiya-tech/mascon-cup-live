@@ -367,3 +367,6 @@ ul.rules li::marker{color:var(--gold)}
 .tspon{color:var(--gold);font-size:14px;margin:2px 0 4px}.tspon b{font-weight:700}
 .spn-list span em{display:block;font-style:normal;font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.04em}
 .spn-list span:has(em){border-radius:12px}
+.cupsw{display:inline-flex;gap:4px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px;margin:2px 0 6px}
+.cupsw a{padding:5px 16px;border-radius:999px;font-weight:700;font-size:14px;color:var(--muted);text-decoration:none;letter-spacing:.02em}
+.cupsw a[aria-current="true"]{background:var(--gold);color:#000}
