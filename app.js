@@ -608,7 +608,7 @@ function podium(rows,lab){
 function statsView(){
   if(!T)return liveView();
   const{bat,bowl}=tourStats();
-  const chips=[["mvp","MVP"],["emerging","Emerging"],["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
+  const chips=[["mvp","MVP"],["emerging","Emerging"],["runs","Most runs"],["wkts","Most wickets"],["sixes","Most sixes"],["fours","Most fours"]].map(([k,l])=>`<button class="opt" data-act="stat" data-v="${k}" aria-pressed="${ui.stat===k}">${l}</button>`).join("");
   const nm=id=>`<td class="n"><span class="tl">${badge(pteam(id),24)}<span class="tn"><b>${esc(pname(id))}</b><span class="how">${esc(tmeta(pteam(id)).short)}${pAge(id)?" · "+pAge(id):""}</span></span></span></td>`;
   let body="",head="",note="";
   if(ui.stat==="mvp"||ui.stat==="emerging"){
@@ -620,9 +620,10 @@ function statsView(){
     const rows=Object.entries(bowl).filter(([,x])=>x.l>0).sort((a,b)=>b[1].w-a[1].w||(a[1].r*6/a[1].l)-(b[1].r*6/b[1].l)).slice(0,20);
     body=rows.length?`<table><thead><tr><th>Bowler</th><th>W</th><th>O</th><th>R</th><th>Econ</th><th>Best</th></tr></thead><tbody>${rows.map(([id,x])=>`<tr>${nm(id)}<td><b>${x.w}</b></td><td>${ovs(x.l)}</td><td>${x.r}</td><td>${rate(x.r,x.l)}</td><td>${x.bw}/${x.br}</td></tr>`).join("")}</tbody></table>`:"";
   }else{
-    const key=ui.stat==="sixes"?"s":"r";
-    const rows=Object.entries(bat).filter(([,x])=>x.b>0||x.r>0).sort((a,b)=>b[1][key]-a[1][key]||b[1].r-a[1].r||a[1].b-b[1].b).slice(0,20);
-    body=rows.length?`<table><thead><tr><th>Batter</th>${key==="s"?"<th>6s</th><th>R</th>":"<th>R</th><th>6s</th>"}<th>Inn</th><th>HS</th><th>SR</th><th>4s</th></tr></thead><tbody>${rows.map(([id,x])=>`<tr>${nm(id)}${key==="s"?`<td><b>${x.s}</b></td><td>${x.r}</td>`:`<td><b>${x.r}</b></td><td>${x.s}</td>`}<td>${x.inns}</td><td>${x.hs}${x.hsNo?"*":""}</td><td>${x.b?(x.r*100/x.b).toFixed(0):"–"}</td><td>${x.f}</td></tr>`).join("")}</tbody></table>`:"";
+    const key=ui.stat==="sixes"?"s":ui.stat==="fours"?"f":"r";
+    const rows=Object.entries(bat).filter(([,x])=>(key==="r"?x.b>0||x.r>0:x[key]>0)).sort((a,b)=>b[1][key]-a[1][key]||b[1].r-a[1].r||a[1].b-b[1].b).slice(0,20);
+    const cols=key==="s"?[["6s","s"],["R","r"],["4s","f"]]:key==="f"?[["4s","f"],["R","r"],["6s","s"]]:[["R","r"],["6s","s"],["4s","f"]];
+    body=rows.length?`<table><thead><tr><th>Batter</th>${cols.map(c=>`<th>${c[0]}</th>`).join("")}<th>Inn</th><th>HS</th><th>SR</th></tr></thead><tbody>${rows.map(([id,x])=>`<tr>${nm(id)}${cols.map((c,i)=>`<td>${i?x[c[1]]:`<b>${x[c[1]]}</b>`}</td>`).join("")}<td>${x.inns}</td><td>${x.hs}${x.hsNo?"*":""}</td><td>${x.b?(x.r*100/x.b).toFixed(0):"–"}</td></tr>`).join("")}</tbody></table>`:"";
   }
   return`<section><h2>Player stats</h2><div class="opts">${chips}</div>${head}${body?`<div class="tbl">${body}</div>`:`<div class="empty"><strong>No stats yet</strong>Leaders appear after the first ball is bowled.</div>`}<p class="kv">${note||"Across all matches including knockouts. Updates live."}</p></section>`;
 }
