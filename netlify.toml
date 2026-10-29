@@ -1,3 +1,8 @@
+# Netlify free plan: every deploy costs 15 of 300 monthly credits. Hosting moved to GitHub Pages,
+# so Netlify builds are skipped (cost nothing). Remove these two lines to deploy on Netlify again.
+[build]
+  ignore = "exit 0"
+
 [[headers]]
   for = "/*.js"
   [headers.values]
