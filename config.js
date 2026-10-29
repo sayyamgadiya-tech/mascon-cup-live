@@ -32,7 +32,7 @@ window.MASCON_CONFIG = {
     { title: "Cup sponsor", names: ["Sha Nemichandji Chaganrajji Dugar"] },
     { title: "Food sponsors", names: ["M/s Mysore Tube Suppliers", "Sha Tejrajji Bhabutmalji Nagori", "M/s Sohan Paper Mart"] },
     { title: "Jersey sponsor", names: ["M/s Avinash Metals"] },
-    { title: "Adults cricket team sponsors", names: ["Sha Kantilalji Pukhrajji Kuhad", "M/s Ambika Aluminium", "Sha Anand Kumarji Vaagmalji Katariya", "Smt Badami Bai Pukhrajji Gadiya", "Smt Kamalabai Gulabchandji Dantewadia", "Sha Kiran Kumarji Sugalchandji Lunkad", "Sha Mahipalji Ganeshmalji Gadiya", "M/s Kalpataru Glass", "Smt Hulasi Bai Chaganrajji Hundia", "Sha Shankarlal Ji Meghrajji Dugar"] },
+    { title: "Adults cricket team sponsors", names: ["Sha Kantilalji Pukhrajji Kuhad", "M/s Ambika Aluminium", "Sha Anand Kumarji Vaagmalji Katariya", "Smt Badami Bai Phoolchandji Gadiya", "Smt Kamalabai Gulabchandji Dantewadia", "Sha Kiran Kumarji Sugalchandji Lunkad", "Sha Mahipalji Ganeshmalji Gadiya", "M/s Kalpataru Glass", "Smt Hulasi Bai Chaganrajji Hundia", "Sha Shankarlal Ji Meghrajji Dugar"] },
     { title: "Kids cricket team sponsors", names: ["Sha Tejrajji Bhoormalji Kothari", "M/s Mahaveer Glass House", "Sha Mithalalji Chaganrajji Dugar", "Sha Narpatrajji Sugalchandji Lunkad"] }
   ],
   // Sponsor strip under the header. Add a name, or a logo file placed in this folder (e.g. "mascon.png").

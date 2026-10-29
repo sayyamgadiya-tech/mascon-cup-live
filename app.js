@@ -39,11 +39,11 @@ const PALETTE=["#6B21A8","#B91C1C","#0F766E","#111827","#C2410C","#B45309","#1D4
 function tmeta(id){const t=teamOf(id);if(!t)return{name:"TBD",color:"#64748B",logo:"",short:"TBD",initials:"?"};
   const nm=t.name.trim().toUpperCase();const pre=PRESET.find(p=>p.name===nm)||PRESET.find(p=>p.name.split(" ")[0]===nm.split(" ")[0]);const idx=(T.teams.indexOf(t)+10)%10;
   const words=t.name.trim().split(/\s+/);const initials=(words.length>1?words[0][0]+words[words.length-1][0]:t.name.slice(0,2)).toUpperCase();
-  return{name:t.name,color:pre?.color||PALETTE[idx],logo:pre?.logo?"logos/"+pre.logo:"",short:words[0].length>=5?words[0]:words.slice(0,2).join(" "),initials}}
+  return{name:t.name,color:pre?.color||PALETTE[idx],logo:pre?.logo?"logos/"+pre.logo:"",sponsor:pre?.sponsor||"",short:words[0].length>=5?words[0]:words.slice(0,2).join(" "),initials}}
 function badge(id,size){const m=tmeta(id);const sz=size||32;
   return m.logo?`<img class="badge" src="${esc(m.logo)}" alt="" width="${sz}" height="${sz}" style="--sz:${sz}px" onerror="this.outerHTML='<span class=badge style=\'--sz:${sz}px;background:${m.color}\'>${esc(m.initials)}</span>'">`
     :`<span class="badge" style="--sz:${sz}px;background:${m.color}">${esc(m.initials)}</span>`}
-const teamLine=(id,cls)=>`<span class="tl ${cls||""}" data-act="team" data-id="${id}">${badge(id,26)}<span class="tn">${esc(tname(id))}</span></span>`;
+const teamLine=(id,cls,sp)=>{const s=sp&&tmeta(id).sponsor;return`<span class="tl ${cls||""}" data-act="team" data-id="${id}">${badge(id,26)}<span class="tn">${esc(tname(id))}${s?`<span class="tsp">${esc(s)}</span>`:""}</span></span>`};
 function pteam(id){for(const t of T?.teams||[])if(t.players.some(p=>p.id===id))return t.id;return null}
 const isLegal=b=>b.t!=="wd"&&b.t!=="nb";
 const ovs=l=>Math.floor(l/6)+"."+(l%6);
@@ -576,7 +576,7 @@ function matchRow(m){
   const sc=id=>{const i=m.inn.findIndex(x=>x.bat===id);if(i<0)return"";const s=innStats(m.inn[i]);return`${s.runs}/${s.wk} (${ovs(s.legal)})`};
   const first=m.inn[0]?.bat||m.a,second=first===m.a?m.b:m.a;
   const win=m.winner&&m.winner!=="tie"&&m.winner!=="nr"?m.winner:null;
-  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}${m.when&&m.status==="scheduled"?` · ${esc(fmtTime(m.when))}`:""}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first)}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second)}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
+  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}${m.when&&m.status==="scheduled"?` · ${esc(fmtTime(m.when))}`:""}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first,"",1)}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second,"",1)}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
 }
 function matchesView(){
   if(!T)return liveView();
@@ -593,7 +593,7 @@ function matchesView(){
 function groupTable(g){
   const rows=pointsTable(g);if(!rows.length)return"";
   const tnr=rows.some(r=>r.t||r.nr);
-  return`<h2>Group ${g}</h2><div class="tbl"><table class="pts"><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th>${tnr?"<th>T/NR</th>":""}<th>Pts</th><th>NRR</th></tr></thead><tbody>${rows.map((r,i)=>`<tr${i<3&&r.p?' class="q"':""}><td class="n"><span class="tl" data-act="team" data-id="${r.id}">${badge(r.id,24)}<span class="tn"><b>${esc(tname(r.id))}</b></span></span>${r.p&&i===0?'<span class="tag">SF</span>':r.p&&i<3?'<span class="tag">QF</span>':""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td>${tnr?`<td>${r.t+r.nr||""}</td>`:""}<td><b>${r.pts}</b></td><td>${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
+  return`<h2>Group ${g}</h2><div class="tbl"><table class="pts"><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th>${tnr?"<th>T/NR</th>":""}<th>Pts</th><th>NRR</th></tr></thead><tbody>${rows.map((r,i)=>`<tr${i<3&&r.p?' class="q"':""}><td class="n"><span class="tl" data-act="team" data-id="${r.id}">${badge(r.id,24)}<span class="tn"><b>${esc(tname(r.id))}</b>${tmeta(r.id).sponsor?`<span class="tsp">${esc(tmeta(r.id).sponsor)}</span>`:""}</span></span>${r.p&&i===0?'<span class="tag">SF</span>':r.p&&i<3?'<span class="tag">QF</span>':""}</td><td>${r.p}</td><td>${r.w}</td><td>${r.l}</td>${tnr?`<td>${r.t+r.nr||""}</td>`:""}<td><b>${r.pts}</b></td><td>${(r.nrr>=0?"+":"")+r.nrr.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function tableView(){
   if(!T)return liveView();
@@ -634,7 +634,7 @@ function teamView(){
   const squad=t.players.map(p=>({p,r:bat[p.id]?.r||0,b:bat[p.id]?.b||0,w:bowl[p.id]?.w||0,o:bowl[p.id]?.l||0,pts:pts[p.id]||0})).sort((x,y)=>y.pts-x.pts||y.r-x.r);
   const icon=(PRESET.find(x=>x.name===t.name.trim().toUpperCase())||PRESET.find(x=>x.name.split(" ")[0]===t.name.trim().toUpperCase().split(" ")[0]))?.icon;
   return`<section><button class="btn sm" data-act="tab" data-v="live">← Back</button>
-  <div class="board" style="background:linear-gradient(160deg,${me.color} -40%,var(--board) 55%)"><div class="teamhero">${badge(id,96)}<div><div class="champ-name">${esc(t.name)}</div><div class="small" style="color:var(--board-muted)">Group ${t.group}${icon?` · Icon: ${esc(icon)}`:""}</div>${row&&row.p?`<div class="rates"><span>Position <b>#${pos}</b></span><span>Played <b>${row.p}</b></span><span>Won <b>${row.w}</b></span><span>Pts <b>${row.pts}</b></span><span>NRR <b>${(row.nrr>=0?"+":"")+row.nrr.toFixed(2)}</b></span></div>`:""}</div></div></div>
+  <div class="board" style="background:linear-gradient(160deg,${me.color} -40%,var(--board) 55%)"><div class="teamhero">${badge(id,96)}<div><div class="champ-name">${esc(t.name)}</div>${me.sponsor?`<div class="tspon">Sponsored by <b>${esc(me.sponsor)}</b></div>`:""}<div class="small" style="color:var(--board-muted)">Group ${t.group}${icon?` · Icon: ${esc(icon)}`:""}</div>${row&&row.p?`<div class="rates"><span>Position <b>#${pos}</b></span><span>Played <b>${row.p}</b></span><span>Won <b>${row.w}</b></span><span>Pts <b>${row.pts}</b></span><span>NRR <b>${(row.nrr>=0?"+":"")+row.nrr.toFixed(2)}</b></span></div>`:""}</div></div></div>
   ${up.length?`<h2>Fixtures</h2><div class="mlist">${up.map(matchRow).join("")}</div>`:""}
   ${played.length?`<h2>Results</h2><div class="mlist">${played.slice().reverse().map(matchRow).join("")}</div>`:""}
   <h2>Squad</h2><div class="tbl"><table><thead><tr><th>Player</th><th>Role</th><th>R</th><th>W</th><th>MVP</th></tr></thead><tbody>${squad.map(x=>`<tr><td class="n"><b class="plink" data-act="player" data-id="${x.p.id}">${esc(x.p.name)}</b>${x.p.age?`<span class="how">${x.p.age} yrs</span>`:""}</td><td>${esc(x.p.role||"")}</td><td>${x.r}${x.b?`<span class="muted small"> (${x.b})</span>`:""}</td><td>${x.w}${x.o?`<span class="muted small"> (${ovs(x.o)})</span>`:""}</td><td><b>${x.pts}</b></td></tr>`).join("")}</tbody></table></div></section>`;
@@ -675,7 +675,7 @@ function sponsorsBlock(){
   const L=CFG.sponsorList||[];const title=(CFG.welcome?.sponsors||[]).find(s=>s.logo);
   if(!L.length&&!title)return"";
   return`<h2>Our sponsors</h2><div class="spons">${title?`<div class="spg main"><span class="label">${esc(title.role||"Title sponsor")}</span><span class="wl-tile${title.dark?" dark":""}"><img src="brand/${esc(title.logo)}" alt="${esc(title.name||"")}"></span></div>`:""}
-  ${L.map(g=>`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${g.names.map(n=>`<span>${esc(n)}</span>`).join("")}</div></div>`).join("")}</div>`;
+  ${L.map(g=>`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${g.names.map(n=>{const tm=PRESET.find(t=>t.sponsor&&t.sponsor.toLowerCase()===n.toLowerCase());return`<span>${esc(n)}${tm?`<em>${esc(tm.name)}</em>`:""}</span>`}).join("")}</div></div>`).join("")}</div>`;
 }
 const RULES=[
  ["Format",["10 teams in 2 groups (A and B) of 5. Each team plays the other 4 in its group: 4 league matches each.","Group toppers go straight to the semi-finals. 2nd and 3rd play the quarter-finals: A2 v B3 and B2 v A3.","All matches, league and knockout, are 12 overs a side.","Win = 2 points. A league tie = 1 point each.","Teams level on points are split by net run rate (runs scored ÷ overs faced − runs conceded ÷ overs bowled). An all-out side counts the full 12 overs."]],
@@ -719,7 +719,7 @@ async function resultCard(m,btn){
       if(logo){x.save();x.beginPath();x.arc(165,y0+105,78,0,Math.PI*2);x.clip();x.drawImage(logo,87,y0+27,156,156);x.restore()}
       const inn=m.inn.find(q=>q.bat===tid);const st=inn?innStats(inn):null;
       txt(mt.name.toUpperCase(),270,y0+92,700,46,"#fff","left",400);
-      if(win===tid)txt("WINNER",272,y0+136,600,26,Y,"left",0,BR);
+      if(mt.sponsor)txt(mt.sponsor,272,y0+130,500,24,"#aaa","left",400,BR);if(win===tid)txt("WINNER",272,y0+(mt.sponsor?170:136),600,26,Y,"left",0,BR);
       if(st){txt(`${st.runs}/${st.wk}`,W-90,y0+128,800,110,win===tid?Y:"#fff","right");txt(`${ovs(st.legal)} overs`,W-92,y0+172,500,28,"#aaa","right",0,BR)}
       else txt("Did not bat",W-90,y0+120,600,34,"#aaa","right",0,BR);
     });
