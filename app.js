@@ -345,7 +345,13 @@ function fantasyView(){
   const openT=locked&&ui.fopen?board.find(t=>t.id===ui.fopen):null;
   const lb=board.length?`<h2>Leaderboard</h2>${locked?`<p class="kv">Updated after every match. Tap a top-10 team to see its 13 players.</p>`:`<p class="kv">Picks are hidden until entries lock at the first ball.</p>`}${openT?picksPanel(openT):""}<div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr class="${t.id===FT.mine?.id?"q ":""}${locked&&i<10?"exp":""}${ui.fopen===t.id?" sel":""}"${locked&&i<10?` data-act="fopen" data-id="${t.id}"`:""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}${locked&&i<10?`<span class="caret">${ui.fopen===t.id?"▾":"▸"}</span>`:""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
   const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12</div></details>`;
-  return`<section>${mine}${lb}${scoring}${predictionHtml()}</section>`;
+  // Most-picked players across all entries (from the same saved board: no extra reads). Picks are only public once entries lock.
+  let mp="";
+  if(locked&&board.length){const cnt={};board.forEach(t=>(t.p||[]).forEach(id=>cnt[id]=(cnt[id]||0)+1));
+    const top=Object.entries(cnt).filter(([id])=>pteam(id)).sort((a,b)=>b[1]-a[1]||(pts[b[0]]||0)-(pts[a[0]]||0)).slice(0,10);
+    if(top.length)mp=`<h2>Most picked players</h2><p class="kv">Top 10 across all ${board.length} fantasy team${board.length===1?"":"s"}.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Picked by</th><th>Pts</th></tr></thead><tbody>${top.map(([id,c],i)=>`<tr data-act="player" data-id="${id}"><td>${medal(i)}</td><td class="n">${nm(id)}</td><td><b>${c}</b> <span class="muted small">${Math.round(c*100/board.length)}%</span></td><td>${pts[id]||0}</td></tr>`).join("")}</tbody></table></div>`;
+  }else if(!locked)mp=`<h2>Most picked players</h2><p class="kv">Shows the 10 players picked by the most fantasy teams, once entries lock at the first ball.</p>`;
+  return`<section>${mine}${lb}${mp}${scoring}${predictionHtml()}</section>`;
 }
 function pickerHtml(){
   const d=FT.draft,q=FT.q.trim().toLowerCase();
