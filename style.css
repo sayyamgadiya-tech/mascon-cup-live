@@ -396,3 +396,16 @@ ul.rules li::marker{color:var(--gold)}
 .spn-list .spn{background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-height:44px}
 .spn-list .spn b{font-size:14px;font-weight:600;line-height:1.3}
 .spn-list .spn em{font-style:normal;font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
+/* Sponsor list: slightly larger text */
+.spg>.label{font-size:13px}
+.spn-list .spn b{font-size:16px}
+.spn-list .spn em{font-size:12.5px}
+.spsub{font-size:18px}
+/* Sponsor list: everything centred; an odd last card sits in the middle */
+.spg{align-items:center;text-align:center}
+.spg.main .wl-tile{margin:0 auto}
+.spn-list{display:flex;flex-wrap:wrap;justify-content:center;width:100%}
+.spn-list .spn{flex:0 1 calc(50% - 4px);min-width:230px;align-items:center;text-align:center}
+@media (max-width:520px){.spn-list .spn{flex-basis:100%}}
+/* Sponsor group headings: bigger and bolder */
+.spg>.label{font-size:16px;font-weight:800;letter-spacing:.1em;color:var(--gold);opacity:1}
