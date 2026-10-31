@@ -378,3 +378,7 @@ ul.rules li::marker{color:var(--gold)}
 .a2hs img{width:40px;height:40px;border-radius:50%;background:#fff;flex:none}
 .a2hs-t{flex:1;font-size:13px;line-height:1.35}.a2hs-t b{display:block;color:#ffc72c;font-size:14px}.a2hs-t span b{display:inline;color:#fff;font-size:13px}
 .a2hs-x{background:none;border:0;color:#aaa;font-size:18px;padding:4px 6px;cursor:pointer;flex:none}
+
+.frules h4{margin:12px 0 4px;font-size:14px;color:#ffc72c;letter-spacing:.3px}.frules h4:first-child{margin-top:2px}
+.frules ul{margin:0;padding-left:18px}.frules li{margin:3px 0;font-size:14px;line-height:1.45;color:#ddd}
+.frules em{font-style:normal;font-weight:700;color:#fff}

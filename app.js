@@ -330,7 +330,7 @@ function predictionHtml(){
   return`<h2>Prediction league</h2><p class="kv">One point per correct winner. ${decided} match${decided===1?"":"es"} decided.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Fan</th><th>Correct</th><th>Calls</th></tr></thead><tbody>${rows.slice(0,50).map((r,i)=>`<tr${r.u===uid?' class="q"':""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(r.name)}</b>${r.u===uid?'<span class="tag">YOU</span>':""}</td><td><b>${r.c}</b></td><td>${r.n}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function fantasyView(){
-  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div>${T?predictionHtml():""}</section>`;
+  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players. Read the rules below before you build your team.</div>${fantasyRulesHtml(true)}${T?predictionHtml():""}</section>`;
   loadFantasy();
   const locked=fantasyLocked(),pts=fantasyPoints(true);
   const board=fantasyBoard();
@@ -349,7 +349,7 @@ function fantasyView(){
   const picksPanel=t=>`<div class="pickpanel"><div class="label">${esc(t.name)} · 13 players</div><div class="pickgrid">${(t.p||[]).map(id=>({id,p:pts[id]||0})).sort((a,b)=>b.p-a.p).map(x=>`<span class="pk" data-act="player" data-id="${x.id}">${badge(pteam(x.id),20)}<span>${esc(pname(x.id))}</span><b>${x.p}</b></span>`).join("")}</div></div>`;
   const openT=locked&&ui.fopen?board.find(t=>t.id===ui.fopen):null;
   const lb=board.length?`<h2>Leaderboard</h2>${locked?`<p class="kv">Updated after every match. Tap a top-10 team to see its 13 players.</p>`:`<p class="kv">Picks are hidden until entries lock at the first ball.</p>`}${openT?picksPanel(openT):""}<div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr class="${t.id===FT.mine?.id?"q ":""}${locked&&i<10?"exp":""}${ui.fopen===t.id?" sel":""}"${locked&&i<10?` data-act="fopen" data-id="${t.id}"`:""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}${locked&&i<10?`<span class="caret">${ui.fopen===t.id?"▾":"▸"}</span>`:""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
-  const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12</div></details>`;
+  const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12<br>Captain 2× · Vice-captain 1.5×</div></details>`;
   // Most-picked players across all entries (from the same saved board: no extra reads). Picks are only public once entries lock.
   let mp="";
   if(locked&&board.length){const cnt={};board.forEach(t=>(t.p||[]).forEach(id=>cnt[id]=(cnt[id]||0)+1));
@@ -357,7 +357,7 @@ function fantasyView(){
     if(top.length)mp=`<h2>Most picked players</h2><p class="kv">Top 10 across all ${board.length} fantasy team${board.length===1?"":"s"}.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Picked by</th><th>Pts</th></tr></thead><tbody>${top.map(([id,c],i)=>`<tr data-act="player" data-id="${id}"><td>${medal(i)}</td><td class="n">${nm(id)}</td><td><b>${c}</b> <span class="muted small">${Math.round(c*100/board.length)}%</span></td><td>${pts[id]||0}</td></tr>`).join("")}</tbody></table></div>`;
   }else if(!locked)mp=`<h2>Most picked players</h2><p class="kv">Shows the 10 players picked by the most fantasy teams, once entries lock at the first ball.</p>`;
   const demoP=DEMO?`<div class="panel"><h2>Demo controls</h2><p class="kv">${locked?"All matches have been played with fake scores.":"Pick a team, then simulate the tournament to see points, the leaderboard and the most-picked table."}</p><div class="row-btns">${locked?"":`<button class="btn pri" data-act="demoSim">Simulate the tournament</button>`}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
-  return`<section>${demoP}${mine}${lb}${mp}${scoring}${DEMO?"":predictionHtml()}</section>`;
+  return`<section>${demoP}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${scoring}${DEMO?"":predictionHtml()}</section>`;
 }
 function pickerHtml(){
   const d=FT.draft,q=FT.q.trim().toLowerCase();
@@ -768,8 +768,18 @@ const RULES=[
  ["Injury",["The SAJYM ground committee and umpires decide whether an injured player gets a runner.","No runner for an injury from before the match."]],
  ["Conduct",["Sponsors and captains are requested to have every player field at least 6 overs in at least one match.","The umpire's decision is final. Only the captain may raise a dispute, calmly, with the umpires and organisers. Dissent or bad behaviour means a ban for the rest of the tournament.","The organisers may change any rule, including the overs per match, if required."]]
 ];
+/* Fantasy league rules: shown on the Fantasy tab before picking, and on the Rules tab */
+function fantasyRulesHtml(open){
+  const li=a=>`<ul>${a.map(x=>`<li>${x}</li>`).join("")}</ul>`;
+  return`<details class="card frules"${open?" open":""}><summary><span>Fantasy league rules</span></summary><div class="in">
+  <h4>Your team: 13 players</h4>${li(["At least <em>3 batters or wicketkeepers</em>","At least <em>2 bowlers</em>","At least <em>3 all-rounders</em>","The other 5 can be any role","At most <em>3 players from one team</em>","At most <em>2 icon players</em>"])}
+  <h4>Captain and vice-captain</h4>${li(["Your <em>captain</em> earns <em>2×</em> points","Your <em>vice-captain</em> earns <em>1.5×</em> points"])}
+  <h4>Deadlines and substitutions</h4>${li(["Teams lock at the <em>first ball on 29 November</em>","<em>2 substitutions before match day 2</em> (6 Dec) and <em>2 more before match day 3</em> (13 Dec)","Substitutions open when the last match of the day ends and close at the first ball of the next match day","You can also change your captain and vice-captain in each window","Points a player has already earned for you stay on your team when you swap him out"])}
+  <h4>Leaderboard</h4>${li(["Updates when each match ends","One team per phone"])}
+  </div></details>`;
+}
 function rulesView(){
-  return`<section><h2>Rules and regulations</h2>${KIDS?`<div class="panel"><b>Kids tournament</b><span class="kv">The kids' rules will be posted here. The adults' rules below are for reference.</span></div>`:""}${RULES.map(([h,l],i)=>`<details class="card"${i<2?" open":""}><summary><span>${esc(h)}</span></summary><div class="in"><ul class="rules">${l.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div></details>`).join("")}
+  return`<section><h2>Rules and regulations</h2>${KIDS?"":fantasyRulesHtml(false)}${KIDS?`<div class="panel"><b>Kids tournament</b><span class="kv">The kids' rules will be posted here. The adults' rules below are for reference.</span></div>`:""}${RULES.map(([h,l],i)=>`<details class="card"${i<2?" open":""}><summary><span>${esc(h)}</span></summary><div class="in"><ul class="rules">${l.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div></details>`).join("")}
   <div class="panel"><div class="label">For further details</div><div class="row-btns"><a class="btn sm" href="tel:+919844142007">Rahul Dantewadia · 98441 42007</a><a class="btn sm" href="tel:+919844026175">Kalpesh Sonwadia · 98440 26175</a></div></div>
   ${sponsorsBlock()}</section>`;
 }
