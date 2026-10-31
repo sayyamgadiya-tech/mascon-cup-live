@@ -506,7 +506,10 @@ function cupHtml(){
   if(!DEMO)loadCup();
   const open=!fantasyLocked(),champ=champion();
   const tot=Object.values(CUP.c).reduce((a,b)=>a+b,0);
-  const teams=[...T.teams].sort((a,b)=>(CUP.c[b.id]||0)-(CUP.c[a.id]||0)||a.name.localeCompare(b.name));
+  // Fixed order: Group A in the first row of 5, Group B in the second (2 per row on phones)
+  const TM=(window.MASCON_TEAMS||[]).map(t=>t.name.toLowerCase());
+  const ord=t=>{const i=TM.indexOf(String(t.name).toLowerCase());return i<0?99:i};
+  const teams=[...T.teams].sort((a,b)=>String(a.group||"").localeCompare(String(b.group||""))||ord(a)-ord(b)||a.name.localeCompare(b.name));
   const head=open?(CUP.mine?`Your pick: <b>${esc(tname(CUP.mine))}</b>. Tap another team to change it before the first ball on 29 November.`:"Tap the team you think will lift the cup."):`Fans' pick to win the cup · ${tot} vote${tot===1?"":"s"}`;
   return`<div class="panel cupvote"><h2>Who will win the Mascon Cup?</h2><p class="kv">${head}</p><div class="cupgrid">${teams.map(t=>{const n=CUP.c[t.id]||0,pc=tot?Math.round(n*100/tot):0;
     return`<button class="cupt${CUP.mine===t.id?" mine":""}${champ===t.id?" won":""}" data-act="cupVote" data-t="${t.id}"${open&&(uid||DEMO)?"":" disabled"}>${badge(t.id,30)}<span>${esc(tname(t.id))}${CUP.mine===t.id?" ✓":""}</span>${tot?`<b>${pc}%</b><i style="width:${pc}%"></i>`:""}</button>`}).join("")}</div></div>`;
@@ -778,7 +781,7 @@ function matchRow(m){
   const sc=id=>{const i=m.inn.findIndex(x=>x.bat===id);if(i<0)return"";const s=innStats(m.inn[i]);return`${s.runs}/${s.wk} (${ovs(s.legal)})`};
   const first=m.inn[0]?.bat||m.a,second=first===m.a?m.b:m.a;
   const win=m.winner&&m.winner!=="tie"&&m.winner!=="nr"?m.winner:null;
-  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}${m.when&&m.status==="scheduled"?` · ${esc(fmtTime(m.when))}`:""}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first,"",1)}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second,"",1)}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
+  return`<div class="mrow"><button class="mlink" data-act="view" data-id="${m.id}"><div class="top"><span class="label">${esc(stageLabel(m))}${m.when&&m.status==="scheduled"?` · ${esc(fmtTime(m.when))}`:""}</span>${statusPill(m)}</div><div class="t${win===first?" w":""}">${teamLine(first,"")}<span>${sc(first)}</span></div><div class="t${win===second?" w":""}">${teamLine(second,"")}<span>${sc(second)}</span></div>${m.result?`<div class="res">${esc(m.result)}</div>`:""}</button>${m.status==="scheduled"?pollHtml(m):""}</div>`;
 }
 function matchesView(){
   if(!T)return liveView();

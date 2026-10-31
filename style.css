@@ -428,3 +428,6 @@ ul.rules li::marker{color:var(--gold)}
 
 /* Full team names in prediction buttons and cup tiles: wrap instead of cutting off */
 .pick span,.cupt span{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.2;text-transform:uppercase}
+
+.cupgrid{grid-template-columns:repeat(2,1fr)}
+@media (min-width:640px){.cupgrid{grid-template-columns:repeat(5,1fr)}}
