@@ -254,8 +254,8 @@ function matchPoints(m){
   });
   return pts;
 }
-function fantasyPoints(){
-  const pts={};Object.values(M).forEach(m=>{const mp=matchPoints(m);for(const k in mp)pts[k]=(pts[k]||0)+mp[k]});return pts;
+function fantasyPoints(doneOnly){
+  const pts={};Object.values(M).forEach(m=>{if(doneOnly&&m.status!=="done")return;const mp=matchPoints(m);for(const k in mp)pts[k]=(pts[k]||0)+mp[k]});return pts;
 }
 function mvpTable(filter){
   const pts=fantasyPoints();const{bat,bowl}=tourStats();const field={},mt={};
@@ -269,19 +269,48 @@ function matchMvp(m){
 function fantasyLocked(){return Object.values(M).some(m=>(m.inn||[]).some(i=>i.balls.length>0))}
 async function loadFantasy(force){
   if(!db)return;const now=Date.now();if(!force&&FT.all&&now-FT.allAt<120000)return;FT.allAt=now;
-  try{const s=await getDocs(collection(db,C("fantasy")));FT.all=s.docs.map(d=>({id:d.id,...d.data()}));
-    if(FT.myId){FT.mine=FT.all.find(t=>t.id===FT.myId)||null}scheduleRender()}catch(e){}
+  // Leaderboard comes from ONE saved record (meta/board) that the scorer's phone updates after every match.
+  // Fans never read the whole fantasy collection: 1 read for the board + 1 for their own team.
+  try{const b=await getBoard(force);FT.all=(b&&b.f)||[];
+    if(FT.myId&&(force||!FT.mine)){const d=await getDoc(doc(db,C("fantasy"),FT.myId));FT.mine=d.exists()?{id:d.id,...d.data()}:null}
+    scheduleRender()}catch(e){}
 }
 function fantasyBoard(){
-  const pts=fantasyPoints();
+  const pts=fantasyPoints(true);
   return (FT.all||[]).map(t=>({...t,pts:(t.p||[]).reduce((a,id)=>a+(pts[id]||0),0)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name));
 }
 function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,role:p.role||"",age:p.age||null,team:t.name,tid:t.id})))}
 function pAge(id){for(const t of T?.teams||[]){const p=t.players.find(p=>p.id===id);if(p)return p.age||null}return null}
 async function loadFans(force){
   if(!db)return;const now=Date.now();if(!force&&FAN.all&&now-FAN.at<120000)return;FAN.at=now;
-  try{const [f,p]=await Promise.all([getDocs(collection(db,C("fans"))),getDocs(collection(db,C("polls")))]);
-    FAN.all={};f.docs.forEach(d=>FAN.all[d.id]=d.data().name||"Fan");FAN.polls={};p.docs.forEach(d=>FAN.polls[d.id]=d.data());scheduleRender()}catch(e){}
+  try{const b=await getBoard(force);FAN.all=(b&&b.fans)||{};FAN.polls=(b&&b.polls)||{};scheduleRender()}catch(e){}
+}
+let BOARD=null,boardAt=0,boardP=null;
+async function getBoard(force){
+  const now=Date.now();if(!force&&BOARD&&now-boardAt<120000)return BOARD;
+  if(boardP)return boardP;
+  boardP=getDoc(doc(db,C("meta"),"board")).then(d=>{BOARD=d.exists()?d.data():null;boardAt=Date.now();boardP=null;return BOARD}).catch(e=>{boardP=null;return BOARD});
+  return boardP;
+}
+// Scorer only: rebuild the leaderboards record from all entries. Runs when a match finishes, at the first ball, or from Setup.
+const boardSig={};let boardBusy=false,boardAgain=false;
+async function publishBoard(manual){
+  if(!db||!canScore)return;if(boardBusy){boardAgain=true;return}boardBusy=true;
+  try{const locked=fantasyLocked();
+    const [fs,fn,pl]=await Promise.all([getDocs(collection(db,C("fantasy"))),getDocs(collection(db,C("fans"))),getDocs(collection(db,C("polls")))]);
+    const f=fs.docs.filter(d=>!d.data().demo).map(d=>{const x=d.data();return locked?{id:d.id,name:x.name||"Fan",p:x.p||[]}:{id:d.id,name:x.name||"Fan"}});
+    const fans={};fn.docs.forEach(d=>fans[d.id]=d.data().name||"Fan");
+    const polls={};pl.docs.forEach(d=>polls[d.id]=d.data());
+    await setDoc(doc(db,C("meta"),"board"),{f,fans,polls,at:Date.now()});
+    BOARD={f,fans,polls};boardAt=Date.now();FT.all=f;FAN.all=fans;FAN.polls=polls;
+    if(manual)flash(`Leaderboards updated: ${f.length} fantasy teams, ${Object.keys(fans).length} prediction fans.`,true);
+  }catch(e){if(manual)flash("Leaderboards not updated. Check your connection.")}
+  boardBusy=false;if(boardAgain){boardAgain=false;publishBoard()}
+}
+function maybePublishBoard(m){
+  if(!canScore||KIDS)return;
+  if(m.status==="done"){const sig=m.result||"done";if(boardSig[m.id]!==sig){boardSig[m.id]=sig;setTimeout(()=>publishBoard(),1500)}}
+  else if(boardSig[m.id])delete boardSig[m.id];
 }
 function predictionBoard(){
   if(!FAN.polls)return[];const score={},tot={};
@@ -298,7 +327,7 @@ function predictionHtml(){
 function fantasyView(){
   if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players from any team.</div>${T?predictionHtml():""}</section>`;
   loadFantasy();
-  const locked=fantasyLocked(),pts=fantasyPoints();
+  const locked=fantasyLocked(),pts=fantasyPoints(true);
   const board=fantasyBoard();
   const rank=FT.mine?board.findIndex(t=>t.id===FT.mine.id)+1:0;
   const nm=id=>{const p=allPlayers().find(p=>p.id===id);return p?`<span class="tl">${badge(p.tid,22)}<span class="tn">${esc(p.name)} <span class="muted small">${esc(p.role)}</span></span></span>`:"Player"};
@@ -314,7 +343,7 @@ function fantasyView(){
   const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1;
   const picksPanel=t=>`<div class="pickpanel"><div class="label">${esc(t.name)} · 13 players</div><div class="pickgrid">${(t.p||[]).map(id=>({id,p:pts[id]||0})).sort((a,b)=>b.p-a.p).map(x=>`<span class="pk" data-act="player" data-id="${x.id}">${badge(pteam(x.id),20)}<span>${esc(pname(x.id))}</span><b>${x.p}</b></span>`).join("")}</div></div>`;
   const openT=locked&&ui.fopen?board.find(t=>t.id===ui.fopen):null;
-  const lb=board.length?`<h2>Leaderboard</h2>${locked?`<p class="kv">Tap a top-10 team to see its 13 players.</p>`:`<p class="kv">Picks are hidden until entries lock at the first ball.</p>`}${openT?picksPanel(openT):""}<div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr class="${t.id===FT.mine?.id?"q ":""}${locked&&i<10?"exp":""}${ui.fopen===t.id?" sel":""}"${locked&&i<10?` data-act="fopen" data-id="${t.id}"`:""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}${locked&&i<10?`<span class="caret">${ui.fopen===t.id?"▾":"▸"}</span>`:""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
+  const lb=board.length?`<h2>Leaderboard</h2>${locked?`<p class="kv">Updated after every match. Tap a top-10 team to see its 13 players.</p>`:`<p class="kv">Picks are hidden until entries lock at the first ball.</p>`}${openT?picksPanel(openT):""}<div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr class="${t.id===FT.mine?.id?"q ":""}${locked&&i<10?"exp":""}${ui.fopen===t.id?" sel":""}"${locked&&i<10?` data-act="fopen" data-id="${t.id}"`:""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}${locked&&i<10?`<span class="caret">${ui.fopen===t.id?"▾":"▸"}</span>`:""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
   const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12</div></details>`;
   return`<section>${mine}${lb}${scoring}${predictionHtml()}</section>`;
 }
@@ -380,10 +409,10 @@ function setSync(c,t){syncState={c:"sync"+(c==="err"?" err":""),t};const el=$("#
 const strip=o=>JSON.parse(JSON.stringify(o));
 function saveMatch(m){
   m.upd=Date.now();M[m.id]=m;
-  if(!fantasyLockWritten&&(m.inn||[]).some(i=>i.balls.length)){fantasyLockWritten=true;setDoc(doc(db,C("meta"),"lock"),{at:Date.now()}).catch(()=>{fantasyLockWritten=false})}
+  if(!fantasyLockWritten&&(m.inn||[]).some(i=>i.balls.length)){fantasyLockWritten=true;setDoc(doc(db,C("meta"),"lock"),{at:Date.now()}).then(()=>publishBoard()).catch(()=>{fantasyLockWritten=false})}
   try{sessionStorage.setItem(SK("mc-score"),ui.scoreSel||"")}catch(e){}
   render();
-  setDoc(doc(db,C("matches"),m.id),strip(m)).catch(e=>{setSync("err",e?.code==="permission-denied"?"Not saved: log in again":"Not saved");if(e?.code==="permission-denied"){canScore=false;render()}});
+  setDoc(doc(db,C("matches"),m.id),strip(m)).then(()=>maybePublishBoard(m)).catch(e=>{setSync("err",e?.code==="permission-denied"?"Not saved: log in again":"Not saved");if(e?.code==="permission-denied"){canScore=false;render()}});
 }
 function delMatchDoc(id){deleteDoc(doc(db,C("matches"),id)).catch(()=>setSync("err","Delete failed"));deleteDoc(doc(db,C("polls"),id)).catch(()=>{})}
 
@@ -968,6 +997,8 @@ function setupView(){
   <div id="setup-msg"></div>
   <div class="row-btns"><button class="btn pri" data-act="saveSetup">Save teams</button>${T&&!league.length?`<button class="btn" data-act="fixtures">Create league fixtures</button>`:""}</div>
   ${schedulePanel()}
+  <div class="panel"><h2>Leaderboards</h2><p class="kv">Fantasy and prediction tables update automatically when each match ends. Use this if a table looks out of date.</p>
+  <div class="row-btns"><button class="btn" data-act="pubBoard">Update leaderboards now</button></div></div>
   <div class="panel"><h2>Scorer PIN</h2><p class="kv">Anyone with the PIN can score. Change it after the tournament or if it leaks; other phones are logged out within an hour.</p>
   <div class="grid2"><div class="field"><label class="label" for="pin-cur">Current PIN</label><input id="pin-cur" type="password" inputmode="numeric" autocomplete="current-password"></div>
   <div class="field"><label class="label" for="pin-new">New PIN (6+ digits)</label><input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password"></div></div>
@@ -1158,6 +1189,7 @@ const acts={
     let no=Math.max(0,...Object.values(M).map(m=>m.no||0));const rounds=Math.max(rr.A.length,rr.B.length);const batch=writeBatch(db);
     for(let r=0;r<rounds;r++)for(const g of["A","B"])for(const[a,b]of rr[g][r]||[]){const m={id:uidGen("m"),no:++no,stage:g,a,b,status:"scheduled",inn:[],result:"",winner:null,overs:T.overs,upd:Date.now()};M[m.id]=m;batch.set(doc(db,C("matches"),m.id),m)}
     batch.commit().catch(()=>flash("Fixtures not saved. Check your connection."));render();flash(`${no} league matches created. Find them under Score and Matches.`,true)},
+  pubBoard:()=>publishBoard(true),
   changePin:async()=>{const cur=$("#pin-cur").value,nw=$("#pin-new").value;
     if(nw.length<6){flash("The new PIN needs at least 6 digits.");return}
     try{await reauthenticateWithCredential(auth.currentUser,EmailAuthProvider.credential(CFG.scorerEmail,cur));await updatePassword(auth.currentUser,nw);flash("PIN changed. Share the new PIN with your scorers.",true)}
