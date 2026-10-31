@@ -3,14 +3,25 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "real-setup, kids-teams, status or go-live-check"
+        description: "status, go-live-check, kids-teams, restore or real-setup (real-setup WIPES everything)"
         required: true
-        default: real-setup
+        default: status
+      file:
+        description: "restore only: backup file on the backups branch, e.g. latest-quick.json or backups/2026-11-29/1530-quick.json"
+        required: false
+        default: latest-quick.json
+      cols:
+        description: "restore only: which data to put back (tournament,matches,meta,fantasy,fans,polls)"
+        required: false
+        default: tournament,matches,meta
 jobs:
   admin:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch backup file
+        if: inputs.action == 'restore'
+        run: git fetch -q origin backups && git show "origin/backups:${{ inputs.file }}" > restore.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -20,3 +31,4 @@ jobs:
         env:
           KEY: ${{ secrets.KEY }}
           ACTION: ${{ inputs.action }}
+          COLS: ${{ inputs.cols }}

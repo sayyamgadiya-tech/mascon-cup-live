@@ -87,4 +87,14 @@ if (ACTION === "real-setup") {
     const j = await r.json(); note("Fan sign-in from new site", r.status + " " + (j.idToken ? "OK" : JSON.stringify(j.error || j).slice(0, 200)));
     if (j.localId) await call("POST", `https://identitytoolkit.googleapis.com/v1/projects/${project}/accounts:delete`, { localId: j.localId }).catch(() => {});
   } catch (e) { note("Fan sign-in FAILED", e.message); }
+} else if (ACTION === "restore") {
+  // Put back records from a backup file (fetched from the backups branch into restore.json by the workflow).
+  // Only overwrites the collections listed in COLS (default: teams, matches and meta, adults + kids). Never deletes anything.
+  const file = JSON.parse(fs.readFileSync("restore.json", "utf8"));
+  const want = (process.env.COLS || "tournament,matches,meta").split(",").map(x => x.trim()).filter(Boolean).flatMap(c => [c, "k" + c]);
+  const w = []; const done = {};
+  for (const col of want) { const docs = file.data?.[col]; if (!docs) continue; done[col] = 0;
+    for (const [id, fields] of Object.entries(docs)) { w.push({ update: { name: `${root}/${col}/${id}`, fields } }); done[col]++; } }
+  await commit(w);
+  console.log(`::notice title=Restored from ${file.at}::${JSON.stringify(done)}`);
 } else { console.error("Unknown ACTION", ACTION); process.exit(1); }

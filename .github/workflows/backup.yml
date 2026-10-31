@@ -1,0 +1,42 @@
+name: Backup
+on:
+  schedule:
+    # Match days 29 Nov, 6 Dec, 13 Dec: every 30 min, 8:00 AM to 8:30 PM IST (teams + every ball)
+    - cron: "*/30 2-14 29 11 *"
+    - cron: "*/30 2-14 6,13 12 *"
+    # Every night 11:00 PM IST: full backup incl. fantasy teams and predictions
+    - cron: "30 17 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "quick (teams + matches) or full (also fantasy and predictions)"
+        required: true
+        default: full
+permissions:
+  contents: write
+concurrency: backup
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Open the backups branch
+        run: |
+          git fetch origin backups:backups 2>/dev/null && git worktree add out backups || { git worktree add --detach out && cd out && git checkout --orphan backups && git rm -rfq . ; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save google-auth-library@9
+      - name: Back up
+        run: node .github/workflows/backup.mjs
+        env:
+          KEY: ${{ secrets.KEY }}
+          OUT: out
+          MODE: ${{ inputs.mode || (github.event.schedule == '30 17 * * *' && 'full' || 'quick') }}
+      - name: Save to the backups branch
+        run: |
+          cd out
+          [ -f .changed ] || exit 0
+          f=$(cat .changed); rm .changed
+          git config user.name "mascon-backup"; git config user.email "backup@masconcup.app"
+          git add -A && git commit -qm "Backup $f" && git push -q origin backups
