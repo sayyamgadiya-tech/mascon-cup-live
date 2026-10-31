@@ -1040,6 +1040,8 @@ function setupView(){
   ${schedulePanel()}
   <div class="panel"><h2>Leaderboards</h2><p class="kv">Fantasy and prediction tables update automatically when each match ends. Use this if a table looks out of date.</p>
   <div class="row-btns"><button class="btn" data-act="pubBoard">Update leaderboards now</button></div></div>
+  <div class="panel"><h2>Backup on this phone</h2><p class="kv">Backups also run automatically online. This saves a copy of all teams and matches (every ball) to this phone as a file. Tap it at the end of each match day.</p>
+  <div class="row-btns"><button class="btn" data-act="dlBackup">Download backup file</button></div></div>
   <div class="panel"><h2>Scorer PIN</h2><p class="kv">Anyone with the PIN can score. Change it after the tournament or if it leaks; other phones are logged out within an hour.</p>
   <div class="grid2"><div class="field"><label class="label" for="pin-cur">Current PIN</label><input id="pin-cur" type="password" inputmode="numeric" autocomplete="current-password"></div>
   <div class="field"><label class="label" for="pin-new">New PIN (6+ digits)</label><input id="pin-new" type="password" inputmode="numeric" autocomplete="new-password"></div></div>
@@ -1231,6 +1233,10 @@ const acts={
     for(let r=0;r<rounds;r++)for(const g of["A","B"])for(const[a,b]of rr[g][r]||[]){const m={id:uidGen("m"),no:++no,stage:g,a,b,status:"scheduled",inn:[],result:"",winner:null,overs:T.overs,upd:Date.now()};M[m.id]=m;batch.set(doc(db,C("matches"),m.id),m)}
     batch.commit().catch(()=>flash("Fixtures not saved. Check your connection."));render();flash(`${no} league matches created. Find them under Score and Matches.`,true)},
   pubBoard:()=>publishBoard(true),
+  dlBackup:()=>{try{const ist=new Date(Date.now()+19800000).toISOString().slice(0,16).replace("T","-").replace(":","");
+    const blob=new Blob([JSON.stringify({at:new Date().toISOString(),cup:KIDS?"kids":"adults",tournament:T,matches:M},null,1)],{type:"application/json"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`mascon-${KIDS?"kids-":""}backup-${ist}.json`;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);flash("Backup file saved to this phone's downloads.",true)}catch(e){flash("Could not save the file on this phone.")}},
   demoSim:()=>demoSimulate(),
   demoExit:()=>{location.href=location.pathname+(KIDS?"?cup=kids":"")},
   changePin:async()=>{const cur=$("#pin-cur").value,nw=$("#pin-new").value;

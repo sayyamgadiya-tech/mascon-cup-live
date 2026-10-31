@@ -1,11 +1,14 @@
 name: Backup
 on:
   schedule:
-    # Match days 29 Nov, 6 Dec, 13 Dec: every 30 min, 8:00 AM to 8:30 PM IST (teams + every ball)
-    - cron: "*/30 2-14 29 11 *"
-    - cron: "*/30 2-14 6,13 12 *"
-    # Every night 11:00 PM IST: full backup incl. fantasy teams and predictions
+    # Match days 29 Nov, 6 Dec, 13 Dec: every 15 min, 7:30 AM to 9:15 PM IST (teams + every ball).
+    # GitHub sometimes delays or drops a timed run; running often means a dropped one is covered by the next.
+    # Unchanged data is skipped, so extra runs cost ~50 reads and save nothing new.
+    - cron: "*/15 2-15 29 11 *"
+    - cron: "*/15 2-15 6,13 12 *"
+    # Every night 11:00 PM IST, with a second attempt at 3:00 AM IST: full backup incl. fantasy and predictions
     - cron: "30 17 * * *"
+    - cron: "30 21 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -32,7 +35,7 @@ jobs:
         env:
           KEY: ${{ secrets.KEY }}
           OUT: out
-          MODE: ${{ inputs.mode || (github.event.schedule == '30 17 * * *' && 'full' || 'quick') }}
+          MODE: ${{ inputs.mode || ((github.event.schedule == '30 17 * * *' || github.event.schedule == '30 21 * * *') && 'full' || 'quick') }}
       - name: Save to the backups branch
         run: |
           cd out
