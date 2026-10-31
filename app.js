@@ -381,7 +381,7 @@ function predictionHtml(){
   return`<h2>Prediction league</h2><p class="kv">One point per correct winner. ${decided} match${decided===1?"":"es"} decided.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Fan</th><th>Correct</th><th>Calls</th></tr></thead><tbody>${rows.slice(0,50).map((r,i)=>`<tr${r.u===uid?' class="q"':""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(r.name)}</b>${r.u===uid?'<span class="tag">YOU</span>':""}</td><td><b>${r.c}</b></td><td>${r.n}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function fantasyView(){
-  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players. Read the rules below before you build your team.</div>${fantasyRulesHtml(true)}${T?predictionHtml():""}</section>`;
+  if(!T||!T.teams.length||!T.teams.every(t=>t.players.length>=DEF.minXi))return`<section><div class="empty"><strong>Fantasy league opens after the auction</strong>Once the squads are in, pick your 13 players. Read the rules below before you build your team.</div>${iosNoteHtml()}${fantasyRulesHtml(true)}${T?predictionHtml():""}</section>`;
   loadFantasy();
   const locked=fantasyLocked(),pts=fantasyPoints(true);
   const board=fantasyBoard();
@@ -416,7 +416,7 @@ function fantasyView(){
   const demoP=DEMO?`<div class="panel"><h2>Demo controls</h2><p class="kv">${DEMO_DAY===0?"Pick your team (the rules are checked as you pick), then play match day 1 with fake scores."
     :DEMO_DAY<3?`Match day ${DEMO_DAY} of 3 played. The substitution window is open: tap <b>Make substitutions</b> in your team to swap up to 2 players and change captain/vice-captain, then play match day ${DEMO_DAY+1}.`
     :"All 3 match days played. Final points and leaderboard below."}</p><div class="row-btns">${DEMO_DAY<3?`<button class="btn pri" data-act="demoSim">Play match day ${DEMO_DAY+1}</button>`:""}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
-  return`<section>${demoP}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${cupHtml()}${scoring}${DEMO?"":predictionHtml()}</section>`;
+  return`<section>${demoP}${DEMO?"":iosNoteHtml()}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${cupHtml()}${scoring}${DEMO?"":predictionHtml()}</section>`;
 }
 // Who a team plays next: its fixtures on the next match day (by date), or its next 2 fixtures if dates aren't set
 function nextOpps(tid){
@@ -900,6 +900,12 @@ const RULES=[
  ["Conduct",["Sponsors and captains are requested to have every player field at least 6 overs in at least one match.","The umpire's decision is final. Only the captain may raise a dispute, calmly, with the umpires and organisers. Dissent or bad behaviour means a ban for the rest of the tournament.","The organisers may change any rule, including the overs per match, if required."]]
 ];
 /* Fantasy league rules: shown on the Fantasy tab before picking, and on the Rules tab */
+/* iPhone notice: Safari and the home-screen icon keep separate storage, so a team made in one does not show in the other */
+function iosNoteHtml(){
+  const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent),standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone;
+  const extra=ios&&standalone&&!FT.mine?`<p><b>Made your team in Safari?</b> Open the link in Safari to see it and make changes.</p>`:"";
+  return`<div class="iosnote"><b>📱 iPhone users, please read</b><p>On iPhone, Safari and the home-screen icon save data separately. A fantasy team made in Safari will not show in the icon (and the other way round).</p><p><b>What to do:</b> open the link in Safari → tap Share ⬆ → <b>Add to Home Screen</b> → open the Mascon Cup icon and make your team there. Always use the icon after that.</p>${extra}<p class="small">Android phones are not affected.</p></div>`;
+}
 function fantasyRulesHtml(open){
   const li=a=>`<ul>${a.map(x=>`<li>${x}</li>`).join("")}</ul>`;
   return`<details class="card frules"${open?" open":""}><summary><span>Fantasy league rules</span></summary><div class="in">
