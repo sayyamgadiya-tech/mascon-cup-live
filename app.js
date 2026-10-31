@@ -386,11 +386,13 @@ async function saveFantasy(){
 /* ================= predictions ================= */
 async function loadPoll(mid,force){
   if(!db)return;const p=polls[mid];
-  if(!force&&p&&Date.now()-p.at<60000)return;
-  polls[mid]={c:p?.c||{},mine:p?.mine||null,at:Date.now()};
+  // Voting closes at the first ball: after one read past that point the counts can't change, so never read again.
+  const mm=M[mid],started=!!(mm&&(mm.inn||[]).some(i=>i.balls.length));
+  if(!force&&p&&(p.final||Date.now()-p.at<180000))return;
+  polls[mid]={c:p?.c||{},mine:p?.mine||null,at:Date.now(),final:false};
   try{const s=await getDoc(doc(db,C("polls"),mid));const d=s.exists()?s.data():{};const c={};
     for(const k in d)c[d[k]]=(c[d[k]]||0)+1;
-    polls[mid]={c,mine:uid?d[uid]||null:null,at:Date.now()};scheduleRender()}catch(e){}
+    polls[mid]={c,mine:uid?d[uid]||null:null,at:Date.now(),final:started};scheduleRender()}catch(e){}
 }
 function pollHtml(m){
   if(KIDS)return"";
@@ -434,16 +436,29 @@ function boot(){
   onAuthStateChanged(auth,u=>{
     uid=u?.uid||null;canScore=!!u&&!!u.email&&u.email===CFG.scorerEmail;
     if(!u)signInAnonymously(auth).catch(()=>{});
-    for(const k in polls)polls[k].at=0;
+    for(const k in polls){polls[k].at=0;polls[k].final=false}
     if(!canScore&&(ui.tab==="score"||ui.tab==="setup"))ui.tab="live";
     render();
   });
-  onSnapshot(doc(db,C("tournament"),"main"),s=>{T=s.exists()?{...DEF,...s.data()}:null;loaded.t=true;scheduleRender()},e=>{fatal="read";scheduleRender()});
-  onSnapshot(collection(db,C("matches")),{includeMetadataChanges:true},s=>{
+  listen();
+  // Fans' phones stop listening 30 s after the app goes to the background and catch up when reopened
+  // (Firestore only charges for records that changed meanwhile). The scorer's phone always stays connected.
+  document.addEventListener("visibilitychange",()=>{
+    clearTimeout(hideTimer);
+    if(document.hidden){if(!canScore)hideTimer=setTimeout(()=>{if(document.hidden&&!canScore)unlisten()},30000)}
+    else listen();
+  });
+}
+let unsubs=[],hideTimer=null;
+function unlisten(){unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[]}
+function listen(){
+  if(!db||unsubs.length)return;
+  unsubs.push(onSnapshot(doc(db,C("tournament"),"main"),s=>{T=s.exists()?{...DEF,...s.data()}:null;loaded.t=true;scheduleRender()},e=>{fatal="read";scheduleRender()}));
+  unsubs.push(onSnapshot(collection(db,C("matches")),{includeMetadataChanges:true},s=>{
     const next={};s.docs.forEach(d=>next[d.id]=d.data());M=next;loaded.m=true;
     if(canScore){if(s.metadata.hasPendingWrites)setSync("",navigator.onLine?"Saving…":"Offline · saved on this phone");else if(!s.metadata.fromCache)setSync("","Synced")}
     scheduleRender();
-  },e=>{fatal="read";scheduleRender()});
+  },e=>{fatal="read";scheduleRender()}));
 }
 const isTyping=()=>{const a=document.activeElement;return!!(a&&$("#app")?.contains(a)&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))};
 function scheduleRender(){if(isTyping()){renderDeferred=true;return}render()}
