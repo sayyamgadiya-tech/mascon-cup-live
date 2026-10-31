@@ -272,13 +272,53 @@ async function loadFantasy(force){
   if(!db)return;const now=Date.now();if(!force&&FT.all&&now-FT.allAt<120000)return;FT.allAt=now;
   // Leaderboard comes from ONE saved record (meta/board) that the scorer's phone updates after every match.
   // Fans never read the whole fantasy collection: 1 read for the board + 1 for their own team.
-  try{const b=await getBoard(force);FT.all=(b&&b.f)||[];
+  try{const b=await getBoard(force);FT.all=(b&&b.f)||[];if(b&&b.subs&&!canScore)SUBS=b.subs;
     if(FT.myId&&(force||!FT.mine)){const d=await getDoc(doc(db,C("fantasy"),FT.myId));FT.mine=d.exists()?{id:d.id,...d.data()}:null}
     scheduleRender()}catch(e){}
 }
+/* ===== Fantasy rules: 13 players, min 3 bat/WK, 2 bowl, 3 AR, max 3 per team, max 2 icons, C 2x / VC 1.5x,
+   2 substitutions in each of 2 windows (before match day 2 and 3). Entry fields: p,c,vc (match day 1), p1,c1,vc1, p2,c2,vc2. ===== */
+const FR={n:13,minBat:3,minBowl:2,minAr:3,maxTeam:3,maxIcon:2,maxSubs:2};
+let SUBS={phase:0,open:false};
+const ICONS=new Set((window.MASCON_TEAMS||[]).map(t=>String(t.icon||"").trim().toLowerCase()).filter(Boolean));
+let _pm=null,_pmT=null;
+function pinfo(id){if(_pmT!==T){_pmT=T;_pm={};allPlayers().forEach(p=>_pm[p.id]=p)}return _pm[id]}
+function isIcon(id){const p=pinfo(id);return!!p&&ICONS.has(p.name.trim().toLowerCase())}
+function rgroup(id){const r=String(pinfo(id)?.role||"").toUpperCase();return r==="BOWL"?"bowl":r==="AR"?"ar":"bat"}
+function tcount(p){const c={bat:0,bowl:0,ar:0,icons:0,teams:{}};p.forEach(id=>{c[rgroup(id)]++;if(isIcon(id))c.icons++;const t=pinfo(id)?.tid;c.teams[t]=(c.teams[t]||0)+1});return c}
+function needOf(c){return Math.max(0,FR.minBat-c.bat)+Math.max(0,FR.minBowl-c.bowl)+Math.max(0,FR.minAr-c.ar)}
+function needText(c){const a=[];if(c.bat<FR.minBat)a.push(`${FR.minBat-c.bat} more batter/WK`);if(c.bowl<FR.minBowl)a.push(`${FR.minBowl-c.bowl} more bowler${FR.minBowl-c.bowl>1?"s":""}`);if(c.ar<FR.minAr)a.push(`${FR.minAr-c.ar} more all-rounder${FR.minAr-c.ar>1?"s":""}`);return a.join(", ")}
+// Why this player can't be added right now ("" = OK)
+function cantAdd(p,id,base){
+  if(p.includes(id))return"";
+  if(p.length>=FR.n)return"Your team already has 13 players. Remove one first.";
+  const c=tcount(p),t=pinfo(id)?.tid;
+  if((c.teams[t]||0)>=FR.maxTeam)return`At most ${FR.maxTeam} players from one team.`;
+  if(isIcon(id)&&c.icons>=FR.maxIcon)return`At most ${FR.maxIcon} icon players.`;
+  const g=rgroup(id),helps=(g==="bat"&&c.bat<FR.minBat)||(g==="bowl"&&c.bowl<FR.minBowl)||(g==="ar"&&c.ar<FR.minAr);
+  if(!helps&&FR.n-p.length-1<needOf(c))return`Fill the minimums first: you still need ${needText(c)}.`;
+  if(base&&!base.includes(id)&&p.filter(x=>!base.includes(x)).length>=FR.maxSubs)return`Only ${FR.maxSubs} substitutions in this window. Put a player back to swap someone else.`;
+  return"";
+}
+function teamProblems(d){
+  const p=d.p,c=tcount(p),out=[];
+  if(p.length!==FR.n)out.push(`Pick ${FR.n} players (${p.length} so far).`);
+  if(needOf(c))out.push(`You still need ${needText(c)}.`);
+  if(Object.values(c.teams).some(n=>n>FR.maxTeam))out.push(`At most ${FR.maxTeam} players from one team.`);
+  if(c.icons>FR.maxIcon)out.push(`At most ${FR.maxIcon} icon players.`);
+  if(!d.c||!p.includes(d.c))out.push("Choose your captain.");
+  if(!d.vc||!p.includes(d.vc))out.push("Choose your vice-captain.");
+  if(d.c&&d.c===d.vc)out.push("Captain and vice-captain must be different players.");
+  if(d.base&&p.filter(x=>!d.base.includes(x)).length>FR.maxSubs)out.push(`Only ${FR.maxSubs} substitutions in this window.`);
+  return out;
+}
+// Which saved version of a team applies in phase ph (0 = match day 1, 1 = after window 1, 2 = after window 2)
+function verAt(t,ph){for(let k=Math.min(ph,2);k>=1;k--)if(t["p"+k])return{p:t["p"+k],c:t["c"+k],vc:t["vc"+k]};return{p:t.p||[],c:t.c,vc:t.vc}}
+function fantasyPer(){const per=[];Object.values(M).forEach(m=>{if(m.status==="done")per.push([m.ph||0,matchPoints(m)])});return per}
+function teamPts(t,per){let s=0;per.forEach(([ph,mp])=>{const v=verAt(t,ph);(v.p||[]).forEach(id=>{const x=mp[id]||0;s+=id===v.c?x*2:id===v.vc?x*1.5:x})});return Math.round(s*10)/10}
 function fantasyBoard(){
-  const pts=fantasyPoints(true);
-  return (FT.all||[]).map(t=>({...t,pts:(t.p||[]).reduce((a,id)=>a+(pts[id]||0),0)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name));
+  const per=fantasyPer();
+  return (FT.all||[]).map(t=>({...t,pts:teamPts(t,per)})).sort((a,b)=>b.pts-a.pts||a.name.localeCompare(b.name));
 }
 function allPlayers(){return(T?.teams||[]).flatMap(t=>t.players.map(p=>({id:p.id,name:p.name,role:p.role||"",age:p.age||null,team:t.name,tid:t.id})))}
 function pAge(id){for(const t of T?.teams||[]){const p=t.players.find(p=>p.id===id);if(p)return p.age||null}return null}
@@ -299,22 +339,33 @@ async function publishBoard(manual){
   if(!db||!canScore)return;if(boardBusy){boardAgain=true;return}boardBusy=true;
   try{const locked=fantasyLocked();
     const [fs,fn,pl]=await Promise.all([getDocs(collection(db,C("fantasy"))),getDocs(collection(db,C("fans"))),getDocs(collection(db,C("polls")))]);
-    const f=fs.docs.filter(d=>!d.data().demo).map(d=>{const x=d.data();return locked?{id:d.id,name:x.name||"Fan",p:x.p||[]}:{id:d.id,name:x.name||"Fan"}});
+    const KEEP=["p","c","vc","p1","c1","vc1","p2","c2","vc2"];
+    const f=fs.docs.filter(d=>!d.data().demo).map(d=>{const x=d.data(),o={id:d.id,name:x.name||"Fan"};if(locked)KEEP.forEach(k=>{if(x[k]!==undefined)o[k]=x[k]});return o});
     const fans={};fn.docs.forEach(d=>fans[d.id]=d.data().name||"Fan");
     const polls={};pl.docs.forEach(d=>polls[d.id]=d.data());
-    await setDoc(doc(db,C("meta"),"board"),{f,fans,polls,at:Date.now()});
-    BOARD={f,fans,polls};boardAt=Date.now();FT.all=f;FAN.all=fans;FAN.polls=polls;
+    await setDoc(doc(db,C("meta"),"board"),{f,fans,polls,subs:SUBS,at:Date.now()});
+    BOARD={f,fans,polls,subs:SUBS};boardAt=Date.now();FT.all=f;FAN.all=fans;FAN.polls=polls;
     if(manual)flash(`Leaderboards updated: ${f.length} fantasy teams, ${Object.keys(fans).length} prediction fans.`,true);
   }catch(e){if(manual)flash("Leaderboards not updated. Check your connection.")}
   boardBusy=false;if(boardAgain){boardAgain=false;publishBoard()}
+}
+function dayKey(m){return m&&m.when?String(m.when).slice(0,10):null}
+async function setSubs(n){SUBS={phase:n.phase,open:n.open};if(DEMO||!db)return;try{await setDoc(doc(db,C("meta"),"subs"),{...SUBS,at:Date.now()})}catch(e){}}
+async function loadSubs(){if(!db||KIDS)return;try{const d=await getDoc(doc(db,C("meta"),"subs"));if(d.exists()){const x=d.data();SUBS={phase:x.phase||0,open:!!x.open}}}catch(e){}}
+// After a match ends: if every match on that date is done and a later match day exists, open the next substitution window.
+async function maybeOpenSubs(m){
+  if(KIDS||SUBS.open||SUBS.phase>=2)return;const d=dayKey(m);if(!d)return;
+  const all=Object.values(M);if(!all.filter(x=>dayKey(x)===d).every(x=>x.status==="done"))return;
+  if(!all.some(x=>dayKey(x)&&dayKey(x)>d&&x.status!=="done"))return;
+  await setSubs({phase:SUBS.phase+1,open:true});
 }
 function maybePublishBoard(m){
   if(!canScore||KIDS)return;
   // First ball of a match: voting has just closed, so save that match's predictions now (nothing left to do at the end).
   const started=(m.inn||[]).some(i=>i.balls.length);
-  if(started&&!boardSig[m.id+":start"]){boardSig[m.id+":start"]=1;setTimeout(()=>publishBoard(),1500)}
+  if(started&&!boardSig[m.id+":start"]){boardSig[m.id+":start"]=1;setTimeout(async()=>{if(SUBS.open)await setSubs({phase:SUBS.phase,open:false});publishBoard()},1500)}
   // Match ended: save again straight away so every table is current. No confirm step for the scorer.
-  if(m.status==="done"){const sig=m.result||"done";if(boardSig[m.id]!==sig){boardSig[m.id]=sig;setTimeout(()=>publishBoard(),500)}}
+  if(m.status==="done"){const sig=m.result||"done";if(boardSig[m.id]!==sig){boardSig[m.id]=sig;setTimeout(async()=>{await maybeOpenSubs(m);publishBoard()},500)}}
   else if(boardSig[m.id])delete boardSig[m.id];
 }
 function predictionBoard(){
@@ -338,51 +389,78 @@ function fantasyView(){
   const nm=id=>{const p=allPlayers().find(p=>p.id===id);return p?`<span class="tl">${badge(p.tid,22)}<span class="tn">${esc(p.name)} <span class="muted small">${esc(p.role)}</span></span></span>`:"Player"};
   let mine="";
   if(FT.draft&&!locked)mine=pickerHtml();
+  else if(FT.draft&&FT.draft.mode==="sub"&&SUBS.open)mine=pickerHtml();
   else if(FT.mine){
-    const my=board.find(t=>t.id===FT.mine.id)||FT.mine;
+    const my=board.find(t=>t.id===FT.mine.id)||{...FT.mine,pts:teamPts(FT.mine,fantasyPer())};
+    const v=verAt(FT.mine,SUBS.phase),cv=id=>id===v.c?'<span class="cvt">C</span>':id===v.vc?'<span class="cvt vc">VC</span>':"";
+    const used=SUBS.phase>=1&&FT.mine["p"+SUBS.phase]?(FT.mine["p"+SUBS.phase]).filter(x=>!verAt(FT.mine,SUBS.phase-1).p.includes(x)).length:0;
+    const foot=!locked?`<div class="row-btns"><button class="btn" data-act="fEdit">Change my team</button><button class="btn warn" data-act="fForget">Not my team</button></div>`
+      :SUBS.open?`<div class="subwin"><b>Substitution window open</b> for match day ${SUBS.phase+1}: up to ${FR.maxSubs} changes${used?` (${used} used)`:""}, and you can change your captain and vice-captain. Closes at the first ball.</div><div class="row-btns"><button class="btn pri" data-act="fSub">Make substitutions</button></div>`
+      :`<p class="kv">Team locked.${SUBS.phase<2?` Substitutions open after match day ${SUBS.phase+1} ends.`:" No more substitutions."}</p>`;
     mine=`<div class="panel"><div class="row-btns" style="justify-content:space-between;align-items:center"><h2>${esc(my.name)}'s XIII</h2><span class="bigpts">${my.pts||0} pts${rank?` · #${rank}`:""}</span></div>
-    <div class="tbl"><table><thead><tr><th>Player</th><th>Pts</th></tr></thead><tbody>${(my.p||[]).map(id=>`<tr><td class="n">${nm(id)}</td><td><b>${pts[id]||0}</b></td></tr>`).join("")}</tbody></table></div>
-    ${locked?`<p class="kv">Teams are locked for the tournament.</p>`:`<div class="row-btns"><button class="btn" data-act="fEdit">Change my team</button><button class="btn warn" data-act="fForget">Not my team</button></div>`}</div>`;
+    <div class="tbl"><table><thead><tr><th>Player</th><th>Pts</th></tr></thead><tbody>${(v.p||[]).map(id=>`<tr><td class="n">${nm(id)}${cv(id)}</td><td><b>${pts[id]||0}</b></td></tr>`).join("")}</tbody></table></div>
+    <p class="kv small">Player points are his tournament total. Your score counts captain 2×, vice-captain 1.5×, and only the matches he played for you.</p>${foot}</div>`;
   }else mine=locked?`<div class="panel"><h2>Entries closed</h2><p class="kv">Fantasy teams locked when the first ball was bowled.</p></div>`
     :`<div class="panel"><h2>Build your XIII</h2><p class="kv">Pick any 13 players from the 10 squads. One team per person; it locks at the first ball on 29 November.</p><button class="btn pri" data-act="fNew">Pick my 13</button></div>`;
   const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1;
-  const picksPanel=t=>`<div class="pickpanel"><div class="label">${esc(t.name)} · 13 players</div><div class="pickgrid">${(t.p||[]).map(id=>({id,p:pts[id]||0})).sort((a,b)=>b.p-a.p).map(x=>`<span class="pk" data-act="player" data-id="${x.id}">${badge(pteam(x.id),20)}<span>${esc(pname(x.id))}</span><b>${x.p}</b></span>`).join("")}</div></div>`;
+  const picksPanel=t=>{const v=verAt(t,SUBS.phase);return`<div class="pickpanel"><div class="label">${esc(t.name)} · 13 players${v.c?` · C ${esc(pname(v.c))} · VC ${esc(pname(v.vc))}`:""}</div><div class="pickgrid">${(v.p||[]).map(id=>({id,p:pts[id]||0})).sort((a,b)=>b.p-a.p).map(x=>`<span class="pk" data-act="player" data-id="${x.id}">${badge(pteam(x.id),20)}<span>${esc(pname(x.id))}</span><b>${x.p}</b></span>`).join("")}</div></div>`};
   const openT=locked&&ui.fopen?board.find(t=>t.id===ui.fopen):null;
   const lb=board.length?`<h2>Leaderboard</h2>${locked?`<p class="kv">Updated after every match. Tap a top-10 team to see its 13 players.</p>`:`<p class="kv">Picks are hidden until entries lock at the first ball.</p>`}${openT?picksPanel(openT):""}<div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Team</th><th>Pts</th></tr></thead><tbody>${board.slice(0,100).map((t,i)=>`<tr class="${t.id===FT.mine?.id?"q ":""}${locked&&i<10?"exp":""}${ui.fopen===t.id?" sel":""}"${locked&&i<10?` data-act="fopen" data-id="${t.id}"`:""}><td style="text-align:left">${medal(i)}</td><td class="n" style="text-align:left"><b>${esc(t.name)}</b>${t.id===FT.mine?.id?'<span class="tag">YOU</span>':""}${locked&&i<10?`<span class="caret">${ui.fopen===t.id?"▾":"▸"}</span>`:""}</td><td><b>${t.pts}</b></td></tr>`).join("")}</tbody></table></div><p class="kv">${board.length} team${board.length===1?"":"s"} entered.</p>`:"";
   const scoring=`<details class="card"><summary><span>How points work</span></summary><div class="in kv">Run 1 · Four +1 · Six +2 · 30 runs +4 · 50 runs +8 · Duck −2<br>Wicket 25 · 3 wickets +8 · Catch, stumping or run-out 8<br>Dot ball 1 · Maiden over 12<br>Captain 2× · Vice-captain 1.5×</div></details>`;
   // Most-picked players across all entries (from the same saved board: no extra reads). Picks are only public once entries lock.
   let mp="";
-  if(locked&&board.length){const cnt={};board.forEach(t=>(t.p||[]).forEach(id=>cnt[id]=(cnt[id]||0)+1));
+  if(locked&&board.length){const cnt={};board.forEach(t=>(verAt(t,SUBS.phase).p||[]).forEach(id=>cnt[id]=(cnt[id]||0)+1));
     const top=Object.entries(cnt).filter(([id])=>pteam(id)).sort((a,b)=>b[1]-a[1]||(pts[b[0]]||0)-(pts[a[0]]||0)).slice(0,10);
     if(top.length)mp=`<h2>Most picked players</h2><p class="kv">Top 10 across all ${board.length} fantasy team${board.length===1?"":"s"}.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Picked by</th><th>Pts</th></tr></thead><tbody>${top.map(([id,c],i)=>`<tr data-act="player" data-id="${id}"><td>${medal(i)}</td><td class="n">${nm(id)}</td><td><b>${c}</b> <span class="muted small">${Math.round(c*100/board.length)}%</span></td><td>${pts[id]||0}</td></tr>`).join("")}</tbody></table></div>`;
   }else if(!locked)mp=`<h2>Most picked players</h2><p class="kv">Shows the 10 players picked by the most fantasy teams, once entries lock at the first ball.</p>`;
-  const demoP=DEMO?`<div class="panel"><h2>Demo controls</h2><p class="kv">${locked?"All matches have been played with fake scores.":"Pick a team, then simulate the tournament to see points, the leaderboard and the most-picked table."}</p><div class="row-btns">${locked?"":`<button class="btn pri" data-act="demoSim">Simulate the tournament</button>`}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
+  const demoP=DEMO?`<div class="panel"><h2>Demo controls</h2><p class="kv">${DEMO_DAY===0?"Pick your team (the rules are checked as you pick), then play match day 1 with fake scores."
+    :DEMO_DAY<3?`Match day ${DEMO_DAY} of 3 played. The substitution window is open: tap <b>Make substitutions</b> in your team to swap up to 2 players and change captain/vice-captain, then play match day ${DEMO_DAY+1}.`
+    :"All 3 match days played. Final points and leaderboard below."}</p><div class="row-btns">${DEMO_DAY<3?`<button class="btn pri" data-act="demoSim">Play match day ${DEMO_DAY+1}</button>`:""}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
   return`<section>${demoP}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${scoring}${DEMO?"":predictionHtml()}</section>`;
 }
 function pickerHtml(){
-  const d=FT.draft,q=FT.q.trim().toLowerCase();
-  const sel=new Set(d.p);
+  const d=FT.draft,q=FT.q.trim().toLowerCase(),sub=d.mode==="sub";
+  const sel=new Set(d.p),c=tcount(d.p);
   const list=allPlayers().filter(p=>!q||p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q));
   const byTeam={};list.forEach(p=>(byTeam[p.team]||(byTeam[p.team]=[])).push(p));
-  const full=sel.size>=13;
-  return`<div class="panel"><div class="row-btns" style="justify-content:space-between;align-items:center"><h2>Pick your 13</h2><span class="bigpts">${sel.size}/13</span></div>
-  <div class="field"><label class="label" for="f-name">Your name (shown on the leaderboard)</label><input id="f-name" value="${esc(d.name)}" maxlength="30" placeholder="e.g. Rahul D" data-fname="1"></div>
-  ${sel.size?`<div class="chips">${d.p.map(id=>{const p=allPlayers().find(x=>x.id===id);return`<button class="chip" data-act="fTog" data-id="${id}">${esc(p?.name||"?")} ✕</button>`}).join("")}</div>`:""}
+  const ins=sub?d.p.filter(x=>!d.base.includes(x)):[],outs=sub?d.base.filter(x=>!d.p.includes(x)):[];
+  const ok=(b,t)=>`<li class="${b?"ok":"no"}">${b?"✓":"•"} ${t}</li>`;
+  const maxT=Math.max(0,...Object.values(c.teams));
+  const checks=`<ul class="fchk">${ok(d.p.length===FR.n,`13 players (${d.p.length})`)}${ok(c.bat>=FR.minBat,`At least 3 batters/WK (${c.bat})`)}${ok(c.bowl>=FR.minBowl,`At least 2 bowlers (${c.bowl})`)}${ok(c.ar>=FR.minAr,`At least 3 all-rounders (${c.ar})`)}${ok(maxT<=FR.maxTeam,`Max 3 from one team`)}${ok(c.icons<=FR.maxIcon,`Max 2 icon players (${c.icons})`)}${ok(d.c&&d.vc&&d.c!==d.vc&&sel.has(d.c)&&sel.has(d.vc),"Captain and vice-captain chosen")}${sub?ok(ins.length<=FR.maxSubs,`Substitutions used: ${ins.length} of ${FR.maxSubs}`):""}</ul>`;
+  const opt=cur=>`<option value="">Choose…</option>`+d.p.map(id=>`<option value="${id}"${id===cur?" selected":""}>${esc(pname(id))}</option>`).join("");
+  const probs=teamProblems(d);
+  const tag=id=>`${isIcon(id)?' <span class="muted small">★ icon</span>':""}`;
+  return`<div class="panel"><div class="row-btns" style="justify-content:space-between;align-items:center"><h2>${sub?`Substitutions · match day ${d.k+1}`:"Pick your 13"}</h2><span class="bigpts">${d.p.length}/13</span></div>
+  ${sub?`<p class="kv">Swap up to ${FR.maxSubs} players: untick a player to take him out, tick a new one to bring him in. Points already earned stay with your team.</p>${outs.length||ins.length?`<p class="kv">${outs.map(x=>`<span class="tagout">OUT ${esc(pname(x))}</span>`).join(" ")} ${ins.map(x=>`<span class="tagin">IN ${esc(pname(x))}</span>`).join(" ")}</p>`:""}`
+    :`<div class="field"><label class="label" for="f-name">Your name (shown on the leaderboard)</label><input id="f-name" value="${esc(d.name)}" maxlength="30" placeholder="e.g. Rahul D" data-fname="1"></div>`}
+  ${checks}
+  ${d.p.length?`<div class="chips">${d.p.map(id=>`<button class="chip" data-act="fTog" data-id="${id}">${esc(pname(id))}${id===d.c?" (C)":id===d.vc?" (VC)":""} ✕</button>`).join("")}</div>`:""}
+  ${d.p.length?`<div class="grid2"><div class="field"><label class="label" for="f-c">Captain (2× points)</label><select id="f-c" data-fcap="c">${opt(d.c)}</select></div><div class="field"><label class="label" for="f-vc">Vice-captain (1.5×)</label><select id="f-vc" data-fcap="vc">${opt(d.vc)}</select></div></div>`:""}
   <input id="f-q" placeholder="Search player or team" value="${esc(FT.q)}" data-fq="1">
-  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label tl">${badge(ps[0].tid,20)}<span>${esc(team)}</span></div><div class="xi">${ps.map(p=>`<label class="${sel.has(p.id)?"on":""}${full&&!sel.has(p.id)?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${sel.has(p.id)?" checked":""}${full&&!sel.has(p.id)?" disabled":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}</label>`).join("")}</div>`).join("")}
+  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label tl">${badge(ps[0].tid,20)}<span>${esc(team)}</span>${c.teams[ps[0].tid]?` <span class="muted small">${c.teams[ps[0].tid]}/3 picked</span>`:""}</div><div class="xi">${ps.map(p=>{const on=sel.has(p.id),why=on?"":cantAdd(d.p,p.id,sub?d.base:null);return`<label class="${on?"on":""}${why?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${on?" checked":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}${tag(p.id)}</label>`}).join("")}</div>`).join("")}
   ${FT.err?`<div class="msg" style="color:var(--out)">${esc(FT.err)}</div>`:""}
-  <div class="row-btns"><button class="btn pri" data-act="fSave"${sel.size===13?"":" disabled"}>Save my team</button><button class="btn" data-act="fCancel">Cancel</button></div></div>`;
+  <div class="row-btns"><button class="btn pri" data-act="fSave"${probs.length?" disabled":""}>${sub?"Save substitutions":"Save my team"}</button><button class="btn" data-act="fCancel">Cancel</button></div>
+  ${probs.length&&d.p.length===FR.n?`<p class="kv small">${esc(probs[0])}</p>`:""}</div>`;
 }
 async function saveFantasy(){
-  const d=FT.draft;const name=(d.name||"").trim();
+  const d=FT.draft;const probs=teamProblems(d);
+  if(probs.length){FT.err=probs[0];render();return}
+  if(d.mode==="sub"){
+    if(!SUBS.open||SUBS.phase!==d.k){FT.err="The substitution window has closed.";render();return}
+    const k=d.k,upd={["p"+k]:d.p,["c"+k]:d.c,["vc"+k]:d.vc};
+    if(DEMO){Object.assign(FT.mine,upd);FT.all=[...(FT.all||[]).filter(t=>t.id!==FT.mine.id),FT.mine];FT.draft=null;FT.err="";render();flash("Substitutions saved (demo).",true);return}
+    try{await setDoc(doc(db,C("fantasy"),FT.mine.id),{...upd,at:Date.now()},{merge:true});Object.assign(FT.mine,upd);FT.draft=null;FT.err="";render();flash("Substitutions saved.",true)}
+    catch(e){FT.err=e?.code==="permission-denied"?"Not allowed: the window may have closed, or more than 2 players changed.":"Not saved. Check your connection.";render()}
+    return;
+  }
+  const name=(d.name||"").trim();
   if(name.length<2){FT.err="Enter your name.";render();return}
-  if(d.p.length!==13){FT.err="Pick exactly 13 players.";render();return}
   if(fantasyLocked()){FT.err="Entries closed: the tournament has started.";render();return}
-  if(DEMO){FT.mine={id:"demo-me",name,p:d.p};FT.myId="demo-me";FT.all=[...(FT.all||[]).filter(t=>t.id!=="demo-me"),FT.mine];FT.draft=null;FT.err="";render();flash("Saved on this phone only (demo).",true);return}
+  if(DEMO){FT.mine={id:"demo-me",name,p:d.p,c:d.c,vc:d.vc};FT.myId="demo-me";FT.all=[...(FT.all||[]).filter(t=>t.id!=="demo-me"),FT.mine];FT.draft=null;FT.err="";render();flash("Saved on this phone only (demo).",true);return}
   if(!uid){FT.err="No connection. Try again in a moment.";render();return}
   const id=uid;
-  try{await setDoc(doc(db,C("fantasy"),id),{name,p:d.p,uid,at:Date.now()});FT.myId=id;try{localStorage.setItem(SK("mc-fid"),id)}catch(e){}
-    FT.mine={id,name,p:d.p};FT.draft=null;FT.err="";loadFantasy(true);render()}
+  try{await setDoc(doc(db,C("fantasy"),id),{name,p:d.p,c:d.c,vc:d.vc,uid,at:Date.now()});FT.myId=id;try{localStorage.setItem(SK("mc-fid"),id)}catch(e){}
+    FT.mine={id,name,p:d.p,c:d.c,vc:d.vc};FT.draft=null;FT.err="";loadFantasy(true);render()}
   catch(e){FT.err=e?.code==="permission-denied"?"Entries are closed or this name is already taken on another phone.":"Not saved. Check your connection.";render()}
 }
 
@@ -424,6 +502,7 @@ function setSync(c,t){syncState={c:"sync"+(c==="err"?" err":""),t};const el=$("#
 const strip=o=>JSON.parse(JSON.stringify(o));
 function saveMatch(m){
   m.upd=Date.now();M[m.id]=m;
+  if(!KIDS&&m.ph===undefined&&(m.inn||[]).some(i=>i.balls.length))m.ph=SUBS.phase||0;
   if(!fantasyLockWritten&&(m.inn||[]).some(i=>i.balls.length)){fantasyLockWritten=true;setDoc(doc(db,C("meta"),"lock"),{at:Date.now()}).then(()=>publishBoard()).catch(()=>{fantasyLockWritten=false})}
   try{sessionStorage.setItem(SK("mc-score"),ui.scoreSel||"")}catch(e){}
   render();
@@ -431,20 +510,31 @@ function saveMatch(m){
 }
 function delMatchDoc(id){deleteDoc(doc(db,C("matches"),id)).catch(()=>setSync("err","Delete failed"));deleteDoc(doc(db,C("polls"),id)).catch(()=>{})}
 
-let DEMO_DATA=null;
+let DEMO_DATA=null,DEMO_DAY=0,DEMO_DAY_OF={};
 async function demoBoot(){
   FT.myId=null;FT.mine=null;
   document.body.insertAdjacentHTML("afterbegin",`<div class="demobar"><b>DEMO PREVIEW</b> · demo squads · nothing is saved</div>`);
   try{const r=await fetch("demo.json",{cache:"no-store"});DEMO_DATA=await r.json()}catch(e){fatal="read";loaded={t:true,m:true};render();return}
   T={...DEF,...DEMO_DATA.tournament};
   // Start with every match unplayed so fantasy picks are open
-  const ms=Object.values(DEMO_DATA.matches);M={};ms.forEach(m=>M[m.id]={...m,status:"scheduled",inn:[],result:"",winner:null,toss:null,chose:null});
-  FT.all=(DEMO_DATA.fantasy||[]).map(f=>({id:f.id,name:f.name,p:f.p}));FAN.all={};FAN.polls={};
+  // Split the demo fixtures into 3 match days: first half of the league, second half, then knockouts
+  const ms=Object.values(DEMO_DATA.matches).sort((a,b)=>(a.no||0)-(b.no||0));const lg=ms.filter(m=>m.stage==="A"||m.stage==="B"),half=Math.ceil(lg.length/2);
+  const DAYS=["2026-11-29","2026-12-06","2026-12-13"];DEMO_DAY_OF={};
+  ms.forEach(m=>{DEMO_DAY_OF[m.id]=lg.includes(m)?(lg.indexOf(m)<half?0:1):2});
+  M={};ms.forEach(m=>M[m.id]={...m,status:"scheduled",inn:[],result:"",winner:null,toss:null,chose:null,when:DAYS[DEMO_DAY_OF[m.id]]+"T09:00"});
+  DEMO_DAY=0;SUBS={phase:0,open:false};
+  FT.all=(DEMO_DATA.fantasy||[]).map(f=>({id:f.id,name:f.name,p:f.p,c:f.p[0],vc:f.p[1]}));FAN.all={};FAN.polls={};
   loaded={t:true,m:true};ui.tab="fantasy";render();
 }
-function demoSimulate(){
-  if(!DEMO_DATA)return;M={};Object.values(DEMO_DATA.matches).forEach(m=>M[m.id]=m);
-  ui.tab="fantasy";render();scrollTo(0,0);flash("Tournament simulated: all matches played. See your points and rank.",true);
+function demoPlayDay(){
+  if(!DEMO_DATA||DEMO_DAY>2)return;
+  if(SUBS.open)SUBS={phase:SUBS.phase,open:false};          // first ball closes the window
+  const ph=SUBS.phase;
+  Object.values(DEMO_DATA.matches).forEach(m=>{if(DEMO_DAY_OF[m.id]===DEMO_DAY)M[m.id]={...m,ph,when:M[m.id].when}});
+  DEMO_DAY++;FT.draft=null;
+  if(DEMO_DAY<=2)SUBS={phase:ph+1,open:true};                // last match of the day ended: window opens
+  ui.tab="fantasy";render();scrollTo(0,0);
+  flash(DEMO_DAY<=2?`Match day ${DEMO_DAY} played. Substitution window open: make up to 2 changes before match day ${DEMO_DAY+1}.`:"Match day 3 played. Tournament over: see the final leaderboard.",true);
 }
 function boot(){
   if(DEMO){demoBoot();return}
@@ -453,7 +543,7 @@ function boot(){
   try{db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(e){db=getFirestore(app)}
   auth=getAuth(app);
   onAuthStateChanged(auth,u=>{
-    uid=u?.uid||null;canScore=!!u&&!!u.email&&u.email===CFG.scorerEmail;
+    uid=u?.uid||null;canScore=!!u&&!!u.email&&u.email===CFG.scorerEmail;if(canScore)loadSubs();
     if(!u)signInAnonymously(auth).catch(()=>{});
     for(const k in polls){polls[k].at=0;polls[k].final=false}
     if(!canScore&&(ui.tab==="score"||ui.tab==="setup"))ui.tab="live";
@@ -1050,6 +1140,8 @@ function setupView(){
   ${schedulePanel()}
   <div class="panel"><h2>Leaderboards</h2><p class="kv">Fantasy and prediction tables update automatically when each match ends. Use this if a table looks out of date.</p>
   <div class="row-btns"><button class="btn" data-act="pubBoard">Update leaderboards now</button></div></div>
+  ${KIDS?"":`<div class="panel"><h2>Fantasy substitutions</h2><p class="kv">Windows open automatically when the last match of a match day ends (fixtures need dates) and close at the next first ball. Now: <b>${SUBS.open?`window open for match day ${SUBS.phase+1}`:SUBS.phase>=2?"both windows used":`closed${SUBS.phase?` (window ${SUBS.phase} done)`:""}`}</b>.</p>
+  <div class="row-btns">${!SUBS.open&&SUBS.phase<2?`<button class="btn" data-act="subsOpen">Open window for match day ${SUBS.phase+2}</button>`:""}${SUBS.open?`<button class="btn" data-act="subsClose">Close window</button>`:""}</div></div>`}
   <div class="panel"><h2>Backup on this phone</h2><p class="kv">Backups also run automatically online. This saves a copy of all teams and matches (every ball) to this phone as a file. Tap it at the end of each match day.</p>
   <div class="row-btns"><button class="btn" data-act="dlBackup">Download backup file</button></div></div>
   <div class="panel"><h2>Scorer PIN</h2><p class="kv">Anyone with the PIN can score. Change it after the tournament or if it leaks; other phones are logged out within an hour.</p>
@@ -1134,9 +1226,10 @@ const acts={
   fopen:el=>{ui.fopen=ui.fopen===el.dataset.id?null:el.dataset.id;render();const p=$(".pickpanel");if(p)p.scrollIntoView({block:"nearest"})},
   fanSave:()=>{const v=($("#fan-name")?.value||"").trim();if(v.length<2){flash("Enter at least 2 characters.");return}FAN.name=v;try{localStorage.setItem("mc-fan",v)}catch(e){}if(uid&&db)setDoc(doc(db,C("fans"),uid),{name:v,uid},{merge:true}).catch(()=>{});render()},
   fNew:()=>{FT.draft={name:FAN.name||"",p:[]};FT.q="";FT.err="";render()},
-  fEdit:()=>{FT.draft={name:FT.mine.name,p:[...FT.mine.p]};FT.q="";FT.err="";render()},
+  fEdit:()=>{FT.draft={name:FT.mine.name,p:[...FT.mine.p],c:FT.mine.c||null,vc:FT.mine.vc||null};FT.q="";FT.err="";render()},
+  fSub:()=>{if(!SUBS.open||!FT.mine)return;const k=SUBS.phase,cur=verAt(FT.mine,k),base=verAt(FT.mine,k-1);FT.draft={mode:"sub",k,base:[...base.p],p:[...cur.p],c:cur.c||null,vc:cur.vc||null};FT.q="";FT.err="";render();scrollTo(0,0)},
   fCancel:()=>{FT.draft=null;render()},
-  fTog:el=>{const d=FT.draft;const i=d.p.indexOf(el.dataset.id);if(i>=0)d.p.splice(i,1);else if(d.p.length<13)d.p.push(el.dataset.id);render()},
+  fTog:el=>{const d=FT.draft,id=el.dataset.id;const i=d.p.indexOf(id);if(i>=0){d.p.splice(i,1);if(d.c===id)d.c=null;if(d.vc===id)d.vc=null}else{const w=cantAdd(d.p,id,d.mode==="sub"?d.base:null);if(w){flash(w);return}d.p.push(id)}FT.err="";render()},
   fSave:()=>saveFantasy(),
   fForget:()=>{FT.myId=null;FT.mine=null;try{localStorage.removeItem(SK("mc-fid"))}catch(e){}render()},
   vote:el=>vote(el.dataset.m,el.dataset.t),
@@ -1243,11 +1336,13 @@ const acts={
     for(let r=0;r<rounds;r++)for(const g of["A","B"])for(const[a,b]of rr[g][r]||[]){const m={id:uidGen("m"),no:++no,stage:g,a,b,status:"scheduled",inn:[],result:"",winner:null,overs:T.overs,upd:Date.now()};M[m.id]=m;batch.set(doc(db,C("matches"),m.id),m)}
     batch.commit().catch(()=>flash("Fixtures not saved. Check your connection."));render();flash(`${no} league matches created. Find them under Score and Matches.`,true)},
   pubBoard:()=>publishBoard(true),
+  subsOpen:()=>ask(`Open the substitution window for match day ${SUBS.phase+2}? Fans can then make up to 2 changes until the next first ball.`,"Open window",async()=>{await setSubs({phase:SUBS.phase+1,open:true});await publishBoard();render();flash("Substitution window open.",true)}),
+  subsClose:()=>ask("Close the substitution window now?","Close window",async()=>{await setSubs({phase:SUBS.phase,open:false});await publishBoard();render();flash("Substitution window closed.",true)}),
   dlBackup:()=>{try{const ist=new Date(Date.now()+19800000).toISOString().slice(0,16).replace("T","-").replace(":","");
     const blob=new Blob([JSON.stringify({at:new Date().toISOString(),cup:KIDS?"kids":"adults",tournament:T,matches:M},null,1)],{type:"application/json"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`mascon-${KIDS?"kids-":""}backup-${ist}.json`;document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);flash("Backup file saved to this phone's downloads.",true)}catch(e){flash("Could not save the file on this phone.")}},
-  demoSim:()=>demoSimulate(),
+  demoSim:()=>demoPlayDay(),
   demoExit:()=>{location.href=location.pathname+(KIDS?"?cup=kids":"")},
   changePin:async()=>{const cur=$("#pin-cur").value,nw=$("#pin-new").value;
     if(nw.length<6){flash("The new PIN needs at least 6 digits.");return}
@@ -1329,7 +1424,11 @@ document.addEventListener("change",e=>{
   if(t.dataset.fix&&ui.sheet?.d){const k=t.dataset.fix,d=ui.sheet.d;d[k]=t.type==="checkbox"?t.checked:(k==="r"?+t.value:t.value);
     if(k==="t"){const ok=d.t==="nb"?["ro"]:d.t==="wd"?["ro","st"]:null;if(d.wk&&ok&&!ok.includes(d.wk))d.wk="";t.blur();render()}
     if(k==="wk"){t.blur();render()}}
-  if(t.dataset.fpick&&FT.draft){const d=FT.draft,id=t.dataset.fpick;const i=d.p.indexOf(id);if(t.checked&&i<0&&d.p.length<13)d.p.push(id);else if(!t.checked&&i>=0)d.p.splice(i,1);const sc=scrollY;render();scrollTo(0,sc)}
+  if(t.dataset.fpick&&FT.draft){const d=FT.draft,id=t.dataset.fpick;const i=d.p.indexOf(id);
+    if(t.checked&&i<0){const w=cantAdd(d.p,id,d.mode==="sub"?d.base:null);if(w){t.checked=false;flash(w);return}d.p.push(id)}
+    else if(!t.checked&&i>=0){d.p.splice(i,1);if(d.c===id)d.c=null;if(d.vc===id)d.vc=null}
+    FT.err="";const sc=scrollY;render();scrollTo(0,sc)}
+  if(t.dataset.fcap&&FT.draft){const d=FT.draft,k=t.dataset.fcap;d[k]=t.value||null;if(k==="c"&&d.vc===d.c)d.vc=null;if(k==="vc"&&d.c===d.vc)d.c=null;FT.err="";const sc=scrollY;render();scrollTo(0,sc)}
 });
 
 render();

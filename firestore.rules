@@ -49,7 +49,26 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 30
         && request.resource.data.p is list && request.resource.data.p.size() == 13
         && noBallBowled());
+      // Substitution window (opened/closed by the scorer in meta/subs): that phone may save its phase-k team
+      // (p{k}, c{k}, vc{k}) with 13 players and at most 2 changed from the team it had before the window.
+      allow update: if request.auth != null && fid == request.auth.uid && subsOpen()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([subKey('p'), subKey('c'), subKey('vc'), 'at'])
+        && request.resource.data[subKey('p')] is list && request.resource.data[subKey('p')].size() == 13
+        && request.resource.data[subKey('p')].toSet().difference(subBase().toSet()).size() <= 2;
       allow delete: if isScorer();
+    }
+    function subsDoc() {
+      return get(/databases/$(database)/documents/meta/subs).data;
+    }
+    function subsOpen() {
+      return exists(/databases/$(database)/documents/meta/subs) && subsDoc().open == true && subsDoc().phase in [1, 2];
+    }
+    function subKey(f) {
+      return f + string(subsDoc().phase);
+    }
+    // The team before this window: original picks for window 1; for window 2, the window-1 team if one was saved
+    function subBase() {
+      return subsDoc().phase == 1 ? resource.data.p : resource.data.get('p1', resource.data.p);
     }
     // Prediction-league names: each phone writes its own, everyone reads
     match /fans/{fid} {

@@ -382,3 +382,9 @@ ul.rules li::marker{color:var(--gold)}
 .frules h4{margin:12px 0 4px;font-size:14px;color:#ffc72c;letter-spacing:.3px}.frules h4:first-child{margin-top:2px}
 .frules ul{margin:0;padding-left:18px}.frules li{margin:3px 0;font-size:14px;line-height:1.45;color:#ddd}
 .frules em{font-style:normal;font-weight:700;color:#fff}
+
+.fchk{list-style:none;margin:6px 0 10px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;font-size:12.5px}
+.fchk li.ok{color:#7ddc8a}.fchk li.no{color:#bbb}
+.cvt{display:inline-block;margin-left:6px;background:#ffc72c;color:#111;font-weight:700;font-size:11px;border-radius:4px;padding:0 5px;vertical-align:middle}.cvt.vc{background:#fff}
+.subwin{background:rgba(255,199,44,.1);border:1px solid #ffc72c;border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}
+.tagout,.tagin{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 6px;margin:2px 2px 0 0}.tagout{background:#5a1d1d;color:#ffb4b4}.tagin{background:#1d4a2a;color:#b4ffc6}
