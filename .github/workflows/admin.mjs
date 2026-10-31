@@ -65,7 +65,7 @@ if (ACTION === "real-setup") {
   console.log("::notice title=Firestore counts::" + JSON.stringify(c));
 } else if (ACTION === "go-live-check") {
   const note = (t, m) => console.log(`::notice title=${t}::${m}`);
-  const DOMAIN = "sayyamgadiya-tech.github.io", SITE = `https://${DOMAIN}/mascon-cup-live/`;
+  const DOMAIN = "ahoremasconcup.github.io", SITE = `https://${DOMAIN}/`;
   // 1. Authorized domains for Firebase Auth
   try {
     const cfgUrl = `https://identitytoolkit.googleapis.com/admin/v2/projects/${project}/config`;
