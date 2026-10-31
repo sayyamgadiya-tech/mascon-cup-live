@@ -15,7 +15,7 @@ const auth = new GoogleAuth({ credentials: JSON.parse(key), scopes: ["https://ww
 const client = await auth.getClient();
 const api = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
 
-const base = ["tournament", "matches", "meta"], extra = ["fantasy", "fans", "polls"];
+const base = ["tournament", "matches", "meta"], extra = ["fantasy", "fans", "polls", "cup"];
 const cols = (MODE === "full" ? [...base, ...extra] : base).flatMap(c => [c, "k" + c]);
 
 const data = {};

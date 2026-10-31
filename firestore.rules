@@ -70,6 +70,17 @@ service cloud.firestore {
     function subBase() {
       return subsDoc().phase == 1 ? resource.data.p : resource.data.get('p1', resource.data.p);
     }
+    // Tournament winner vote: one field per phone (its anonymous id) on cup/winner, changeable until the first ball
+    match /cup/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null && docId == 'winner'
+        && request.resource.data.keys().hasOnly([request.auth.uid])
+        && request.resource.data[request.auth.uid] is string && noBallBowled();
+      allow update: if request.auth != null && docId == 'winner'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data[request.auth.uid] is string && noBallBowled();
+      allow delete: if isScorer();
+    }
     // Prediction-league names: each phone writes its own, everyone reads
     match /fans/{fid} {
       allow read: if true;

@@ -409,3 +409,21 @@ ul.rules li::marker{color:var(--gold)}
 @media (max-width:520px){.spn-list .spn{flex-basis:100%}}
 /* Sponsor group headings: bigger and bolder */
 .spg>.label{font-size:16px;font-weight:800;letter-spacing:.1em;color:var(--gold);opacity:1}
+/* Prediction box: centred */
+.poll>.label,.poll>.kv{text-align:center}
+.pick{flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:4px;padding:12px 10px}
+.pick span{flex:none;max-width:100%}
+
+/* Tournament winner vote */
+.cupvote h2{text-align:center}.cupvote>.kv{text-align:center}
+.cupgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.cupt{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 8px 12px;font-weight:600;cursor:pointer;min-width:0;color:inherit}
+.cupt span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.cupt b{font-family:var(--display);font-size:17px;color:var(--gold)}
+.cupt i{position:absolute;left:0;bottom:0;height:3px;background:var(--gold)}
+.cupt.mine{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.cupt.won{border-color:#7ddc8a}
+.cupt:disabled{cursor:default}
+
+/* Full team names in prediction buttons and cup tiles: wrap instead of cutting off */
+.pick span,.cupt span{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.2;text-transform:uppercase}

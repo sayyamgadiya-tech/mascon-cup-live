@@ -416,7 +416,7 @@ function fantasyView(){
   const demoP=DEMO?`<div class="panel"><h2>Demo controls</h2><p class="kv">${DEMO_DAY===0?"Pick your team (the rules are checked as you pick), then play match day 1 with fake scores."
     :DEMO_DAY<3?`Match day ${DEMO_DAY} of 3 played. The substitution window is open: tap <b>Make substitutions</b> in your team to swap up to 2 players and change captain/vice-captain, then play match day ${DEMO_DAY+1}.`
     :"All 3 match days played. Final points and leaderboard below."}</p><div class="row-btns">${DEMO_DAY<3?`<button class="btn pri" data-act="demoSim">Play match day ${DEMO_DAY+1}</button>`:""}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
-  return`<section>${demoP}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${scoring}${DEMO?"":predictionHtml()}</section>`;
+  return`<section>${demoP}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${cupHtml()}${scoring}${DEMO?"":predictionHtml()}</section>`;
 }
 // Who a team plays next: its fixtures on the next match day (by date), or its next 2 fixtures if dates aren't set
 function nextOpps(tid){
@@ -488,18 +488,43 @@ function pollHtml(m){
   const ca=p.c[m.a]||0,cb=p.c[m.b]||0,tot=ca+cb,pa=tot?Math.round(ca*100/tot):50;
   const open=m.status==="scheduled"||m.status==="setup";
   if(!open&&!tot)return"";
-  const side=(id,n,pc)=>`<button class="pick${p.mine===id?" mine":""}" data-act="vote" data-m="${m.id}" data-t="${id}"${open&&uid?"":" disabled"}>${badge(id,22)}<span>${esc(tmeta(id).short)}${p.mine===id?" ✓":""}</span><b>${tot?pc+"%":"–"}</b></button>`;
-  const head=open?(p.mine?"Your prediction is in. You can change it until the first ball.":"Who wins? Tap to predict."):`Fans' prediction · ${tot} vote${tot===1?"":"s"}`;
-  const nameBox=open&&!FAN.name?`<div class="prow"><input id="fan-name" placeholder="Your name for the prediction league" maxlength="30" data-fanname="1"><button class="btn sm" data-act="fanSave">OK</button></div>`:"";
-  return`<div class="poll"><div class="label">${head}</div>${nameBox}<div class="bar"><span style="width:${pa}%"></span></div><div class="picks">${side(m.a,ca,pa)}${side(m.b,cb,100-pa)}</div>${open&&tot?`<div class="kv">${tot} vote${tot===1?"":"s"} so far</div>`:""}</div>`;
+  const side=(id,n,pc)=>`<button class="pick${p.mine===id?" mine":""}" data-act="vote" data-m="${m.id}" data-t="${id}"${open&&uid?"":" disabled"}>${badge(id,22)}<span>${esc(tname(id))}${p.mine===id?" ✓":""}</span><b>${tot?pc+"%":"–"}</b></button>`;
+  const head=open?(p.mine?"Prediction saved. Tap the other team to change it before the first ball.":"Who wins this match? Tap a team."):`Fans' prediction · ${tot} vote${tot===1?"":"s"}`;
+  const nameBox=open&&p.mine&&!FAN.name?`<div class="kv">Optional: add your name to appear on the prediction leaderboard.</div><div class="prow"><input id="fan-name" placeholder="Your name" maxlength="30" data-fanname="1"><button class="btn sm" data-act="fanSave">Save</button></div>`:"";
+  return`<div class="poll"><div class="label">${head}</div><div class="bar"><span style="width:${pa}%"></span></div><div class="picks">${side(m.a,ca,pa)}${side(m.b,cb,100-pa)}</div>${open&&tot?`<div class="kv">${tot} vote${tot===1?"":"s"} so far</div>`:""}${nameBox}</div>`;
+}
+/* ===== Tournament winner vote: one tap, changeable until the first ball of the tournament ===== */
+let CUP={c:{},mine:null,at:0,final:false};
+async function loadCup(force){
+  if(!db||KIDS)return;if(!force&&CUP.at&&(CUP.final||Date.now()-CUP.at<180000))return;
+  const locked=fantasyLocked();CUP.at=Date.now();
+  try{const s=await getDoc(doc(db,C("cup"),"winner"));const d=s.exists()?s.data():{};const c={};for(const k in d)c[d[k]]=(c[d[k]]||0)+1;
+    CUP={c,mine:uid?d[uid]||null:null,at:Date.now(),final:locked};scheduleRender()}catch(e){}
+}
+function cupHtml(){
+  if(KIDS||!T||!T.teams.length)return"";
+  if(!DEMO)loadCup();
+  const open=!fantasyLocked(),champ=champion();
+  const tot=Object.values(CUP.c).reduce((a,b)=>a+b,0);
+  const teams=[...T.teams].sort((a,b)=>(CUP.c[b.id]||0)-(CUP.c[a.id]||0)||a.name.localeCompare(b.name));
+  const head=open?(CUP.mine?`Your pick: <b>${esc(tname(CUP.mine))}</b>. Tap another team to change it before the first ball on 29 November.`:"Tap the team you think will lift the cup."):`Fans' pick to win the cup · ${tot} vote${tot===1?"":"s"}`;
+  return`<div class="panel cupvote"><h2>Who will win the Mascon Cup?</h2><p class="kv">${head}</p><div class="cupgrid">${teams.map(t=>{const n=CUP.c[t.id]||0,pc=tot?Math.round(n*100/tot):0;
+    return`<button class="cupt${CUP.mine===t.id?" mine":""}${champ===t.id?" won":""}" data-act="cupVote" data-t="${t.id}"${open&&(uid||DEMO)?"":" disabled"}>${badge(t.id,30)}<span>${esc(tname(t.id))}${CUP.mine===t.id?" ✓":""}</span>${tot?`<b>${pc}%</b><i style="width:${pc}%"></i>`:""}</button>`}).join("")}</div></div>`;
+}
+async function cupVote(team){
+  if(fantasyLocked()){flash("Voting closed at the first ball.");return}
+  if(DEMO){if(CUP.mine)CUP.c[CUP.mine]--;CUP.c[team]=(CUP.c[team]||0)+1;CUP.mine=team;render();flash(`Your pick to win the cup: ${tname(team)} (demo).`,true);return}
+  if(!uid){flash("Voting needs a connection. Try again in a moment.");return}
+  if(CUP.mine)CUP.c[CUP.mine]=Math.max(0,(CUP.c[CUP.mine]||1)-1);CUP.c[team]=(CUP.c[team]||0)+1;CUP.mine=team;render();
+  try{await setDoc(doc(db,C("cup"),"winner"),{[uid]:team},{merge:true});flash(`Your pick to win the cup: ${tname(team)}.`,true)}
+  catch(e){flash("Vote not saved. Voting closes at the first ball.");loadCup(true)}
 }
 async function vote(mid,team){
   if(!uid){flash("Predictions need a connection. Try again in a moment.");return}
-  if(!FAN.name){flash("Enter your name first so your predictions count in the league.");const n=$("#fan-name");if(n)n.focus();return}
   const p=polls[mid]||{c:{},mine:null,at:0};
   if(p.mine)p.c[p.mine]=Math.max(0,(p.c[p.mine]||1)-1);
   p.c[team]=(p.c[team]||0)+1;p.mine=team;polls[mid]=p;render();
-  try{await setDoc(doc(db,C("polls"),mid),{[uid]:team},{merge:true});setDoc(doc(db,C("fans"),uid),{name:FAN.name,uid},{merge:true}).catch(()=>{});loadPoll(mid,true)}
+  try{await setDoc(doc(db,C("polls"),mid),{[uid]:team},{merge:true});if(FAN.name)setDoc(doc(db,C("fans"),uid),{name:FAN.name,uid},{merge:true}).catch(()=>{});flash(`Prediction saved: ${tname(team)}.`,true);loadPoll(mid,true)}
   catch(e){flash("Prediction not saved. Voting closes at the first ball.");loadPoll(mid,true)}
 }
 
@@ -551,7 +576,7 @@ function boot(){
   onAuthStateChanged(auth,u=>{
     uid=u?.uid||null;canScore=!!u&&!!u.email&&u.email===CFG.scorerEmail;if(canScore)loadSubs();
     if(!u)signInAnonymously(auth).catch(()=>{});
-    for(const k in polls){polls[k].at=0;polls[k].final=false}
+    for(const k in polls){polls[k].at=0;polls[k].final=false}CUP.at=0;
     if(!canScore&&(ui.tab==="score"||ui.tab==="setup"))ui.tab="live";
     render();
   });
@@ -742,6 +767,7 @@ function liveView(){
     :next?`<div class="label">Next match</div>${boardHtml(next)}${pollHtml(next)}`:"";
   const recent=done.slice(0,champ?2:3);
   return`<section>${hero}
+  ${champ?"":cupHtml()}
   ${recent.length?`<div class="label">${champ?"Recent results":"Latest results"}</div><div class="mlist">${recent.map(matchRow).join("")}</div>`:""}
   ${done.length?`<div class="minis">${miniTable("A")}${miniTable("B")}</div><button class="btn sm" data-act="tab" data-v="table">Full points table</button>`:""}
   ${topCards()}
@@ -1245,6 +1271,7 @@ const acts={
   fSave:()=>saveFantasy(),
   fForget:()=>{FT.myId=null;FT.mine=null;try{localStorage.removeItem(SK("mc-fid"))}catch(e){}render()},
   vote:el=>vote(el.dataset.m,el.dataset.t),
+  cupVote:el=>cupVote(el.dataset.t),
   ssel:el=>{ui.scoreSel=el.dataset.id;ui.sheet=null;ui.toss=null;pendingConfirm=null;try{sessionStorage.setItem(SK("mc-score"),ui.scoreSel)}catch(e){}render()},
   newMatch:()=>{ui.scoreSel="new";const[a,b]=suggest("QF1");ui.nm={stage:"QF1",a:a||T.teams[0].id,b:b||T.teams[1].id};render()},
   createMatch:()=>{const nm=ui.nm;if(!nm||nm.a===nm.b)return;
