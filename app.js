@@ -5,6 +5,7 @@ import { initializeFirestore, getFirestore, persistentLocalCache, persistentMult
 /* ================= config ================= */
 const CFG = window.MASCON_CONFIG || {};
 // Which tournament: adults (default) or kids (?cup=kids). Kids data lives in k-prefixed collections.
+const DEMO=(()=>{try{return new URLSearchParams(location.search).get("demo")==="1"}catch(e){return false}})();
 const KIDS=(()=>{try{return new URLSearchParams(location.search).get("cup")==="kids"}catch(e){return false}})();
 const C=n=>KIDS?"k"+n:n;
 const SK=k=>KIDS?k+"-kids":k;
@@ -355,7 +356,8 @@ function fantasyView(){
     const top=Object.entries(cnt).filter(([id])=>pteam(id)).sort((a,b)=>b[1]-a[1]||(pts[b[0]]||0)-(pts[a[0]]||0)).slice(0,10);
     if(top.length)mp=`<h2>Most picked players</h2><p class="kv">Top 10 across all ${board.length} fantasy team${board.length===1?"":"s"}.</p><div class="tbl"><table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Picked by</th><th>Pts</th></tr></thead><tbody>${top.map(([id,c],i)=>`<tr data-act="player" data-id="${id}"><td>${medal(i)}</td><td class="n">${nm(id)}</td><td><b>${c}</b> <span class="muted small">${Math.round(c*100/board.length)}%</span></td><td>${pts[id]||0}</td></tr>`).join("")}</tbody></table></div>`;
   }else if(!locked)mp=`<h2>Most picked players</h2><p class="kv">Shows the 10 players picked by the most fantasy teams, once entries lock at the first ball.</p>`;
-  return`<section>${mine}${lb}${mp}${scoring}${predictionHtml()}</section>`;
+  const demoP=DEMO?`<div class="panel"><h2>Demo controls</h2><p class="kv">${locked?"All matches have been played with fake scores.":"Pick a team, then simulate the tournament to see points, the leaderboard and the most-picked table."}</p><div class="row-btns">${locked?"":`<button class="btn pri" data-act="demoSim">Simulate the tournament</button>`}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
+  return`<section>${demoP}${mine}${lb}${mp}${scoring}${DEMO?"":predictionHtml()}</section>`;
 }
 function pickerHtml(){
   const d=FT.draft,q=FT.q.trim().toLowerCase();
@@ -376,6 +378,7 @@ async function saveFantasy(){
   if(name.length<2){FT.err="Enter your name.";render();return}
   if(d.p.length!==13){FT.err="Pick exactly 13 players.";render();return}
   if(fantasyLocked()){FT.err="Entries closed: the tournament has started.";render();return}
+  if(DEMO){FT.mine={id:"demo-me",name,p:d.p};FT.myId="demo-me";FT.all=[...(FT.all||[]).filter(t=>t.id!=="demo-me"),FT.mine];FT.draft=null;FT.err="";render();flash("Saved on this phone only (demo).",true);return}
   if(!uid){FT.err="No connection. Try again in a moment.";render();return}
   const id=uid;
   try{await setDoc(doc(db,C("fantasy"),id),{name,p:d.p,uid,at:Date.now()});FT.myId=id;try{localStorage.setItem(SK("mc-fid"),id)}catch(e){}
@@ -428,7 +431,23 @@ function saveMatch(m){
 }
 function delMatchDoc(id){deleteDoc(doc(db,C("matches"),id)).catch(()=>setSync("err","Delete failed"));deleteDoc(doc(db,C("polls"),id)).catch(()=>{})}
 
+let DEMO_DATA=null;
+async function demoBoot(){
+  FT.myId=null;FT.mine=null;
+  document.body.insertAdjacentHTML("afterbegin",`<div class="demobar"><b>DEMO PREVIEW</b> · demo squads · nothing is saved</div>`);
+  try{const r=await fetch("demo.json",{cache:"no-store"});DEMO_DATA=await r.json()}catch(e){fatal="read";loaded={t:true,m:true};render();return}
+  T={...DEF,...DEMO_DATA.tournament};
+  // Start with every match unplayed so fantasy picks are open
+  const ms=Object.values(DEMO_DATA.matches);M={};ms.forEach(m=>M[m.id]={...m,status:"scheduled",inn:[],result:"",winner:null,toss:null,chose:null});
+  FT.all=(DEMO_DATA.fantasy||[]).map(f=>({id:f.id,name:f.name,p:f.p}));FAN.all={};FAN.polls={};
+  loaded={t:true,m:true};ui.tab="fantasy";render();
+}
+function demoSimulate(){
+  if(!DEMO_DATA)return;M={};Object.values(DEMO_DATA.matches).forEach(m=>M[m.id]=m);
+  ui.tab="fantasy";render();scrollTo(0,0);flash("Tournament simulated: all matches played. See your points and rank.",true);
+}
 function boot(){
+  if(DEMO){demoBoot();return}
   if(!CFG.firebase||!CFG.firebase.apiKey||CFG.firebase.apiKey==="PASTE_HERE"){fatal="config";loaded={t:true,m:true};render();return}
   const app=initializeApp(CFG.firebase);
   try{db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(e){db=getFirestore(app)}
@@ -472,7 +491,7 @@ function headerHtml(){
   if(canScore){t.push(["score","Score"]);t.push(["setup","Setup"])}
   const nm=(T?.name||DEF.name).replace(/\s*\(DEMO\)\s*/i,"").replace(/\s*kids\s*$/i,"");const demo=/DEMO/i.test(T?.name||"");
   const parts=nm.split(/\s+/);const eyebrow=parts.length>2?parts[0]:"";const main=parts.length>2?parts.slice(1).join(" "):nm;
-  return`<div class="wrap"><div class="brand">${CFG.appLogo?`<img class="applogo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark" aria-hidden="true"></span>`}<h1>${eyebrow?`<small>${esc(eyebrow)}${KIDS?" · KIDS":""}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
+  return`<div class="wrap"><div class="brand">${CFG.appLogo?`<img class="applogo" src="brand/${esc(CFG.appLogo)}" alt="">`:`<span class="mark" aria-hidden="true"></span>`}<h1>${eyebrow?`<small>${esc(eyebrow)}${KIDS?" · KIDS":""}${demo?" · DEMO":""}</small>`:""}${esc(main)}</h1><span class="${syncState.c}" id="sync">${esc(canScore?syncState.t:"")}</span>${canScore||DEMO?"":`<button class="btn sm ghost" data-act="tab" data-v="login">Scorer</button>`}</div>
   <div class="cupsw" role="tablist" aria-label="Tournament"><a href="${location.pathname}" aria-current="${!KIDS}">Adults</a><a href="${location.pathname}?cup=kids" aria-current="${KIDS}">Kids</a></div>
   <nav class="tabs" aria-label="Sections">${t.map(([k,l])=>`<button data-act="tab" data-v="${k}" aria-current="${ui.tab===k}">${l}</button>`).join("")}</nav></div>${sponsorHtml()}`;
 }
@@ -1001,10 +1020,7 @@ function setupView(){
   const squadsReady=T&&T.teams.length>=2&&T.teams.every(t=>t.players.length>=DEF.minXi);
   const hasFixtures=league.length>0;
   return`<section>${confirmHtml()}
-  ${KIDS?`<div class="panel"><h2>Kids tournament</h2><p class="kv">This is the separate kids section. Nothing here touches the adults' tournament. Set the overs and rules under Tournament, name the teams and add players under Teams and squads, save, then create the fixtures.</p>${T?`<div class="row-btns"><button class="btn warn" data-act="reset">Delete all kids data</button></div>`:""}<div id="qs-msg"></div></div>`:`<div class="panel"><h2>Quick start</h2>
-  <div class="row-btns"><button class="btn pri" data-act="realSetup"${hasFixtures&&!T?.name?.includes("DEMO")?" disabled":""}>Set up the real tournament</button><button class="btn" data-act="loadDemo">Load demo tournament</button>${T?`<button class="btn warn" data-act="reset">Delete everything</button>`:""}</div>
-  <p class="kv"><b>Real tournament:</b> the 10 franchises with their icons, in groups, plus all 20 league fixtures. Players are added from the Auction pool below after 1 November.<br><b>Demo:</b> a full simulated tournament with fake scores and fantasy entries, for trying every screen. Delete it before the real setup.</p>
-  <div id="qs-msg"></div></div>`}
+  ${KIDS?`<div class="panel"><h2>Kids tournament</h2><p class="kv">This is the separate kids section. Nothing here touches the adults' tournament. Set the overs and rules under Tournament, name the teams and add players under Teams and squads, save, then create the fixtures.</p><div id="qs-msg"></div></div>`:`<div class="panel"><h2>Tournament data</h2><p class="kv">The real tournament is set up. The demo, reset and set-up buttons have been removed so one wrong tap can't wipe live data. If a reset is ever needed, ask Sayyam.</p><div id="qs-msg"></div></div>`}
   <div class="panel"><h2>Tournament</h2>
   <div class="field"><label class="label" for="st-name">Name</label><input id="st-name" value="${esc(d.name)}" data-bind="name"></div>
   <div class="grid2">
@@ -1215,6 +1231,8 @@ const acts={
     for(let r=0;r<rounds;r++)for(const g of["A","B"])for(const[a,b]of rr[g][r]||[]){const m={id:uidGen("m"),no:++no,stage:g,a,b,status:"scheduled",inn:[],result:"",winner:null,overs:T.overs,upd:Date.now()};M[m.id]=m;batch.set(doc(db,C("matches"),m.id),m)}
     batch.commit().catch(()=>flash("Fixtures not saved. Check your connection."));render();flash(`${no} league matches created. Find them under Score and Matches.`,true)},
   pubBoard:()=>publishBoard(true),
+  demoSim:()=>demoSimulate(),
+  demoExit:()=>{location.href=location.pathname+(KIDS?"?cup=kids":"")},
   changePin:async()=>{const cur=$("#pin-cur").value,nw=$("#pin-new").value;
     if(nw.length<6){flash("The new PIN needs at least 6 digits.");return}
     try{await reauthenticateWithCredential(auth.currentUser,EmailAuthProvider.credential(CFG.scorerEmail,cur));await updatePassword(auth.currentUser,nw);flash("PIN changed. Share the new PIN with your scorers.",true)}
@@ -1300,6 +1318,7 @@ document.addEventListener("change",e=>{
 
 render();
 try{welcomeShow()}catch(e){}
+for(const k of["reset","loadDemo","realSetup"])acts[k]=()=>flash("This tool is switched off to protect the tournament data.");
 try{boot()}catch(e){fatal="read";loaded={t:true,m:true};render()}
 
 /* exported for tests */

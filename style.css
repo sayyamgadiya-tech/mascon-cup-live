@@ -371,3 +371,5 @@ ul.rules li::marker{color:var(--gold)}
 .cupsw a{padding:5px 16px;border-radius:999px;font-weight:700;font-size:14px;color:var(--muted);text-decoration:none;letter-spacing:.02em}
 .cupsw a[aria-current="true"]{background:var(--gold);color:#000}
 .spsub{font-size:16px}
+
+.demobar{position:sticky;top:0;z-index:50;background:#ffc72c;color:#111;text-align:center;font-size:12px;padding:6px 10px;letter-spacing:.3px}
