@@ -309,7 +309,11 @@ async function publishBoard(manual){
 }
 function maybePublishBoard(m){
   if(!canScore||KIDS)return;
-  if(m.status==="done"){const sig=m.result||"done";if(boardSig[m.id]!==sig){boardSig[m.id]=sig;setTimeout(()=>publishBoard(),1500)}}
+  // First ball of a match: voting has just closed, so save that match's predictions now (nothing left to do at the end).
+  const started=(m.inn||[]).some(i=>i.balls.length);
+  if(started&&!boardSig[m.id+":start"]){boardSig[m.id+":start"]=1;setTimeout(()=>publishBoard(),1500)}
+  // Match ended: save again straight away so every table is current. No confirm step for the scorer.
+  if(m.status==="done"){const sig=m.result||"done";if(boardSig[m.id]!==sig){boardSig[m.id]=sig;setTimeout(()=>publishBoard(),500)}}
   else if(boardSig[m.id])delete boardSig[m.id];
 }
 function predictionBoard(){
