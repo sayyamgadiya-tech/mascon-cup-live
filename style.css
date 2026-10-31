@@ -388,3 +388,5 @@ ul.rules li::marker{color:var(--gold)}
 .cvt{display:inline-block;margin-left:6px;background:#ffc72c;color:#111;font-weight:700;font-size:11px;border-radius:4px;padding:0 5px;vertical-align:middle}.cvt.vc{background:#fff}
 .subwin{background:rgba(255,199,44,.1);border:1px solid #ffc72c;border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}
 .tagout,.tagin{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 6px;margin:2px 2px 0 0}.tagout{background:#5a1d1d;color:#ffb4b4}.tagin{background:#1d4a2a;color:#b4ffc6}
+
+.fvs{font-size:12px;color:#bbb;margin:-2px 0 6px 28px}.fvs b{color:#ffc72c;font-weight:600}

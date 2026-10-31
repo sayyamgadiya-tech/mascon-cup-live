@@ -418,6 +418,12 @@ function fantasyView(){
     :"All 3 match days played. Final points and leaderboard below."}</p><div class="row-btns">${DEMO_DAY<3?`<button class="btn pri" data-act="demoSim">Play match day ${DEMO_DAY+1}</button>`:""}<button class="btn" data-act="demoExit">Exit demo</button></div></div>`:"";
   return`<section>${demoP}${fantasyRulesHtml(!FT.mine&&!locked)}${mine}${lb}${mp}${scoring}${DEMO?"":predictionHtml()}</section>`;
 }
+// Who a team plays next: its fixtures on the next match day (by date), or its next 2 fixtures if dates aren't set
+function nextOpps(tid){
+  const up=Object.values(M).filter(m=>m.status!=="done"&&(m.a===tid||m.b===tid)&&m.a&&m.b).sort((x,y)=>String(x.when||"9").localeCompare(String(y.when||"9"))||(x.no||0)-(y.no||0));
+  if(!up.length)return[];const d=dayKey(up[0]);
+  return(d?up.filter(m=>dayKey(m)===d):up.slice(0,2)).map(m=>m.a===tid?m.b:m.a);
+}
 function pickerHtml(){
   const d=FT.draft,q=FT.q.trim().toLowerCase(),sub=d.mode==="sub";
   const sel=new Set(d.p),c=tcount(d.p);
@@ -437,7 +443,7 @@ function pickerHtml(){
   ${d.p.length?`<div class="chips">${d.p.map(id=>`<button class="chip" data-act="fTog" data-id="${id}">${esc(pname(id))}${id===d.c?" (C)":id===d.vc?" (VC)":""} ✕</button>`).join("")}</div>`:""}
   ${d.p.length?`<div class="grid2"><div class="field"><label class="label" for="f-c">Captain (2× points)</label><select id="f-c" data-fcap="c">${opt(d.c)}</select></div><div class="field"><label class="label" for="f-vc">Vice-captain (1.5×)</label><select id="f-vc" data-fcap="vc">${opt(d.vc)}</select></div></div>`:""}
   <input id="f-q" placeholder="Search player or team" value="${esc(FT.q)}" data-fq="1">
-  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label tl">${badge(ps[0].tid,20)}<span>${esc(team)}</span>${c.teams[ps[0].tid]?` <span class="muted small">${c.teams[ps[0].tid]}/3 picked</span>`:""}</div><div class="xi">${ps.map(p=>{const on=sel.has(p.id),why=on?"":cantAdd(d.p,p.id,sub?d.base:null);return`<label class="${on?"on":""}${why?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${on?" checked":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}${tag(p.id)}</label>`}).join("")}</div>`).join("")}
+  ${Object.entries(byTeam).map(([team,ps])=>`<div class="label tl">${badge(ps[0].tid,20)}<span>${esc(team)}</span>${c.teams[ps[0].tid]?` <span class="muted small">${c.teams[ps[0].tid]}/3 picked</span>`:""}</div>${(o=>o.length?`<div class="fvs">Next: ${o.map(x=>`vs <b>${esc(tname(x))}</b>`).join(" · ")}</div>`:"")(nextOpps(ps[0].tid))}<div class="xi">${ps.map(p=>{const on=sel.has(p.id),why=on?"":cantAdd(d.p,p.id,sub?d.base:null);return`<label class="${on?"on":""}${why?" dim":""}"><input type="checkbox" data-fpick="${p.id}"${on?" checked":""}>${esc(p.name)}${p.role?` <span class="muted small">${esc(p.role)}</span>`:""}${tag(p.id)}</label>`}).join("")}</div>`).join("")}
   ${FT.err?`<div class="msg" style="color:var(--out)">${esc(FT.err)}</div>`:""}
   <div class="row-btns"><button class="btn pri" data-act="fSave"${probs.length?" disabled":""}>${sub?"Save substitutions":"Save my team"}</button><button class="btn" data-act="fCancel">Cancel</button></div>
   ${probs.length&&d.p.length===FR.n?`<p class="kv small">${esc(probs[0])}</p>`:""}</div>`;
