@@ -1472,25 +1472,27 @@ document.addEventListener("change",e=>{
 
 render();
 try{welcomeShow()}catch(e){}
-/* ===== "Add to home screen" tip: shown once a few seconds after opening, until added or dismissed ===== */
+/* ===== "Add to home screen": slim bar at the very top of the page until the app is installed.
+   ✕ hides it for this visit only; it comes back next time until the icon is added. ===== */
 let installEvt=null;addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;showInstallTip()});
-function showInstallTip(){
-  try{if(localStorage.getItem("mc-a2hs")==="1")return}catch(e){}
-  if(DEMO||matchMedia("(display-mode: standalone)").matches||navigator.standalone)return;
-  if(document.getElementById("a2hs"))return;
+function a2hsSteps(){
   const ua=navigator.userAgent,ios=/iPhone|iPad|iPod/i.test(ua),inApp=/WhatsApp|FBAN|FBAV|Instagram/i.test(ua);
-  const how=installEvt?"Get the Mascon Cup icon on your home screen for one-tap live scores."
-    :ios?(inApp?"Open this link in Safari, then tap Share ⬆ → <b>Add to Home Screen</b>.":"Tap Share ⬆ at the bottom, then <b>Add to Home Screen</b>.")
-    :(inApp?"Open this link in Chrome, then tap ⋮ → <b>Add to Home screen</b>.":"Tap the ⋮ menu, then <b>Add to Home screen</b>.");
-  const el=document.createElement("div");el.id="a2hs";el.className="a2hs";
-  el.innerHTML=`<img src="brand/icon-192.png" alt=""><div class="a2hs-t"><b>Add to home screen</b><span>${how}</span></div>${installEvt?`<button class="btn pri sm" id="a2hs-go">Add</button>`:""}<button class="a2hs-x" aria-label="Close">✕</button>`;
-  document.body.appendChild(el);
-  const done=()=>{el.remove();try{localStorage.setItem("mc-a2hs","1")}catch(e){}};
-  el.querySelector(".a2hs-x").onclick=done;
-  const go=el.querySelector("#a2hs-go");if(go)go.onclick=async()=>{try{installEvt.prompt();await installEvt.userChoice}catch(e){}installEvt=null;done()};
+  return ios?(inApp?"Open this link in <b>Safari</b>, tap Share ⬆, then <b>Add to Home Screen</b>.":"Tap Share ⬆ at the bottom of Safari, then <b>Add to Home Screen</b>.")
+    :(inApp?"Open this link in <b>Chrome</b>, tap ⋮ at the top right, then <b>Add to Home screen</b>.":"Tap ⋮ at the top right of Chrome, then <b>Add to Home screen</b>.");
 }
-addEventListener("appinstalled",()=>{try{localStorage.setItem("mc-a2hs","1")}catch(e){};document.getElementById("a2hs")?.remove()});
-setTimeout(showInstallTip,8000);
+function showInstallTip(){
+  if(DEMO||matchMedia("(display-mode: standalone)").matches||navigator.standalone)return;
+  try{if(sessionStorage.getItem("mc-a2hs-x")==="1")return}catch(e){}
+  let el=document.getElementById("a2hs");
+  if(!el){el=document.createElement("div");el.id="a2hs";el.className="a2hs";document.body.insertBefore(el,document.body.firstChild)}
+  el.innerHTML=`<img src="brand/icon-192.png" alt=""><span class="a2hs-t"><b>Add Mascon Cup to your home screen</b><span class="a2hs-how" hidden>${a2hsSteps()}</span></span><button class="btn pri sm" id="a2hs-go">${installEvt?"Add":"How?"}</button><button class="a2hs-x" aria-label="Close">✕</button>`;
+  el.querySelector(".a2hs-x").onclick=()=>{el.remove();try{sessionStorage.setItem("mc-a2hs-x","1")}catch(e){}};
+  el.querySelector("#a2hs-go").onclick=async()=>{
+    if(installEvt){try{installEvt.prompt();const r=await installEvt.userChoice;if(r&&r.outcome==="accepted")el.remove()}catch(e){}installEvt=null;showInstallTip();return}
+    const h=el.querySelector(".a2hs-how");h.hidden=!h.hidden};
+}
+addEventListener("appinstalled",()=>document.getElementById("a2hs")?.remove());
+showInstallTip();
 for(const k of["reset","loadDemo","realSetup"])acts[k]=()=>flash("This tool is switched off to protect the tournament data.");
 try{boot()}catch(e){fatal="read";loaded={t:true,m:true};render()}
 
