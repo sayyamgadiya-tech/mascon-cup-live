@@ -1318,6 +1318,25 @@ document.addEventListener("change",e=>{
 
 render();
 try{welcomeShow()}catch(e){}
+/* ===== "Add to home screen" tip: shown once a few seconds after opening, until added or dismissed ===== */
+let installEvt=null;addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;showInstallTip()});
+function showInstallTip(){
+  try{if(localStorage.getItem("mc-a2hs")==="1")return}catch(e){}
+  if(DEMO||matchMedia("(display-mode: standalone)").matches||navigator.standalone)return;
+  if(document.getElementById("a2hs"))return;
+  const ua=navigator.userAgent,ios=/iPhone|iPad|iPod/i.test(ua),inApp=/WhatsApp|FBAN|FBAV|Instagram/i.test(ua);
+  const how=installEvt?"Get the Mascon Cup icon on your home screen for one-tap live scores."
+    :ios?(inApp?"Open this link in Safari, then tap Share ⬆ → <b>Add to Home Screen</b>.":"Tap Share ⬆ at the bottom, then <b>Add to Home Screen</b>.")
+    :(inApp?"Open this link in Chrome, then tap ⋮ → <b>Add to Home screen</b>.":"Tap the ⋮ menu, then <b>Add to Home screen</b>.");
+  const el=document.createElement("div");el.id="a2hs";el.className="a2hs";
+  el.innerHTML=`<img src="brand/icon-192.png" alt=""><div class="a2hs-t"><b>Add to home screen</b><span>${how}</span></div>${installEvt?`<button class="btn pri sm" id="a2hs-go">Add</button>`:""}<button class="a2hs-x" aria-label="Close">✕</button>`;
+  document.body.appendChild(el);
+  const done=()=>{el.remove();try{localStorage.setItem("mc-a2hs","1")}catch(e){}};
+  el.querySelector(".a2hs-x").onclick=done;
+  const go=el.querySelector("#a2hs-go");if(go)go.onclick=async()=>{try{installEvt.prompt();await installEvt.userChoice}catch(e){}installEvt=null;done()};
+}
+addEventListener("appinstalled",()=>{try{localStorage.setItem("mc-a2hs","1")}catch(e){};document.getElementById("a2hs")?.remove()});
+setTimeout(showInstallTip,8000);
 for(const k of["reset","loadDemo","realSetup"])acts[k]=()=>flash("This tool is switched off to protect the tournament data.");
 try{boot()}catch(e){fatal="read";loaded={t:true,m:true};render()}
 

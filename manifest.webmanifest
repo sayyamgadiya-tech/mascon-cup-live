@@ -1,0 +1,15 @@
+{
+  "name": "Ahore Mascon Cup 2026 Live",
+  "short_name": "Mascon Cup",
+  "description": "Live scores, points table, player stats and fantasy league for the Ahore Mascon Cup 2026.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "brand/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "brand/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
