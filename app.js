@@ -851,7 +851,13 @@ function sponsorsBlock(){
   const L=CFG.sponsorList||[];const title=(CFG.welcome?.sponsors||[]).find(s=>s.logo);
   if(!L.length&&!title)return"";
   return`<h2>Our sponsors</h2><div class="spons">${title?`<div class="spg main"><span class="label">${esc(title.role||"Title sponsor")}</span><span class="wl-tile${title.dark?" dark":""}"><img src="brand/${esc(title.logo)}" alt="${esc(title.name||"")}"></span>${title.sub?`<b class="spsub">${esc(title.sub)}</b>`:""}</div>`:""}
-  ${L.map(g=>`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${g.names.map(n=>{const tm=(window.MASCON_TEAMS||[]).find(t=>t.sponsor&&t.sponsor.toLowerCase()===n.toLowerCase());const kt=Object.keys(KSP).find(k=>KSP[k].toLowerCase()===n.toLowerCase());const lab=tm?tm.name:kt?kt+" (kids)":"";return`<span>${esc(n)}${lab?`<em>${esc(lab)}</em>`:""}</span>`}).join("")}</div></div>`).join("")}</div>`;
+  ${L.map(g=>{
+    // Team sponsors are listed in team order with the team name on top; other groups keep their own order
+    const TM=window.MASCON_TEAMS||[],KK=Object.keys(KSP);
+    const rows=g.names.map(n=>{const ti=TM.findIndex(t=>t.sponsor&&t.sponsor.toLowerCase()===n.toLowerCase());const ki=KK.findIndex(k=>KSP[k].toLowerCase()===n.toLowerCase());
+      return{n,team:ti>=0?TM[ti].name:ki>=0?KK[ki]:"",ord:ti>=0?ti:ki>=0?ki:999}});
+    if(rows.some(r=>r.team))rows.sort((a,b)=>a.ord-b.ord);
+    return`<div class="spg"><span class="label">${esc(g.title)}</span><div class="spn-list">${rows.map(r=>`<div class="spn">${r.team?`<em>${esc(r.team)}</em>`:""}<b>${esc(r.n)}</b></div>`).join("")}</div></div>`}).join("")}</div>`;
 }
 const RULES=[
  ["Format",["10 teams in 2 groups (A and B) of 5. Each team plays the other 4 in its group: 4 league matches each.","Group toppers go straight to the semi-finals. 2nd and 3rd play the quarter-finals: A2 v B3 and B2 v A3.","All matches, league and knockout, are 12 overs a side.","Win = 2 points. A league tie = 1 point each.","Teams level on points are split by net run rate (runs scored ÷ overs faced − runs conceded ÷ overs bowled). An all-out side counts the full 12 overs."]],
